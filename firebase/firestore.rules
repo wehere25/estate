@@ -1,0 +1,58 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return request.auth != null && (
+        request.auth.token.admin == true || 
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+      );
+    }
+
+    // Explicitly allow operations in development mode
+    function isDevMode() {
+      let allowedUids = [
+        'g2gphfL3Cdd6sxggq0mksDJWf382'  // Your development UID
+      ];
+      return request.auth != null && allowedUids.hasAny([request.auth.uid]);
+    }
+
+    // Admin collection rules
+    match /admins/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && (isAdmin() || isDevMode());
+    }
+
+    // Users collection rules
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && (
+        isAdmin() || 
+        isDevMode() ||
+        userId == request.auth.uid
+      );
+    }
+
+    // Admin logs collection
+    match /admin_logs/{logId} {
+      allow read, write: if isSignedIn() && (isAdmin() || isDevMode());
+    }
+
+    // Properties collection
+    match /properties/{propertyId} {
+      allow read: if true;
+      allow write: if isSignedIn() && (
+        isAdmin() || 
+        isDevMode() ||
+        resource == null ||
+        resource.data.ownerId == request.auth.uid
+      );
+    }
+  }
+}

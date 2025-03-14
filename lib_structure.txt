@@ -1,0 +1,156 @@
+lib
+├── core
+│   ├── config
+│   │   └── firebase_config.dart
+│   ├── constants
+│   │   ├── app_colors.dart
+│   │   ├── app_strings.dart
+│   │   └── app_styles.dart
+│   ├── navigation
+│   │   ├── app_router.dart
+│   │   └── route_names.dart
+│   ├── presentation
+│   │   └── screens
+│   │       └── not_found_screen.dart
+│   ├── services
+│   │   ├── notification_service.dart
+│   │   └── storage_service.dart
+│   ├── theme
+│   │   ├── app_theme.dart
+│   │   └── theme_provider.dart
+│   └── utils
+│       ├── context_extensions.dart
+│       ├── exceptions
+│       │   ├── app_exception.dart
+│       │   └── auth_exception.dart
+│       ├── logger.dart
+│       ├── permission_handler.dart
+│       └── validators.dart
+├── features
+│   ├── admin
+│   │   ├── data
+│   │   │   └── admin_repository.dart
+│   │   ├── models
+│   │   │   ├── admin_stats.dart
+│   │   │   ├── audit_log.dart
+│   │   │   └── property_trend.dart
+│   │   ├── presentation
+│   │   │   ├── providers
+│   │   │   │   └── admin_provider.dart
+│   │   │   ├── screens
+│   │   │   │   ├── admin_dashboard_screen.dart
+│   │   │   │   ├── dashboard_screen.dart
+│   │   │   │   └── property_upload_screen.dart
+│   │   │   └── widgets
+│   │   │       ├── audit_log_list.dart
+│   │   │       └── stats_card.dart
+│   │   └── providers
+│   │       └── admin_provider.dart
+│   ├── auth
+│   │   ├── data
+│   │   │   ├── auth_remote_data_source.dart
+│   │   │   ├── auth_repository.dart
+│   │   │   ├── auth_service.dart
+│   │   │   └── models
+│   │   │       ├── auth_state.dart
+│   │   │       ├── auth_status.dart
+│   │   │       ├── user.dart
+│   │   │       ├── user_dto.dart
+│   │   │       ├── user_dto.g.dart
+│   │   │       └── user_model.dart
+│   │   ├── domain
+│   │   │   ├── enums
+│   │   │   │   └── auth_status.dart
+│   │   │   └── models
+│   │   │       ├── auth_state.dart
+│   │   │       └── user_role.dart
+│   │   └── presentation
+│   │       ├── providers
+│   │       │   ├── auth_provider.dart
+│   │       │   └── auth_state.dart
+│   │       ├── screens
+│   │       │   ├── landing_screen.dart
+│   │       │   ├── login_screen.dart
+│   │       │   └── register_screen.dart
+│   │       └── widgets
+│   │           ├── auth_form.dart
+│   │           └── password_strength_indicator.dart
+│   ├── home
+│   │   ├── providers
+│   │   │   └── home_provider.dart
+│   │   └── screens
+│   │       └── home_screen.dart
+│   ├── landing
+│   │   └── presentation
+│   │       ├── screens
+│   │       │   └── landing_page.dart
+│   │       └── widgets
+│   │           ├── cta_section.dart
+│   │           ├── featured_properties.dart
+│   │           ├── features_section.dart
+│   │           ├── footer_section.dart
+│   │           ├── header_section.dart
+│   │           ├── hero_section.dart
+│   │           └── testimonials_section.dart
+│   ├── profile
+│   │   └── screens
+│   │       └── profile_screen.dart
+│   ├── property
+│   │   ├── data
+│   │   │   ├── models
+│   │   │   │   ├── property_dto.dart
+│   │   │   │   ├── property_dto.g.dart
+│   │   │   │   └── property_model.dart
+│   │   │   ├── property_remote_data_source.dart
+│   │   │   └── property_repository.dart
+│   │   └── presentation
+│   │       ├── providers
+│   │       │   ├── property_provider.dart
+│   │       │   └── property_state.dart
+│   │       ├── screens
+│   │       │   ├── home_screen.dart
+│   │       │   ├── property_detail_screen.dart
+│   │       │   └── property_listing_screen.dart
+│   │       └── widgets
+│   │           ├── amenity_chip.dart
+│   │           ├── filter_chip.dart
+│   │           ├── property_card.dart
+│   │           ├── property_features.dart
+│   │           ├── property_filter.dart
+│   │           ├── property_filter_sheet.dart
+│   │           └── property_search_bar.dart
+│   └── storage
+│       ├── data
+│       │   └── storage_repository.dart
+│       ├── providers
+│       │   └── storage_provider.dart
+│       └── utils
+│           └── storage_tester.dart
+├── firebase
+│   ├── firebase_options.dart
+│   └── services
+│       ├── auth_service.dart
+│       ├── firestore_service.dart
+│       └── image_service.dart
+├── firebase_options.dart
+├── main.dart
+├── screens
+│   ├── loading_screen.dart
+│   └── splash_screen.dart
+├── services
+│   └── notification_service.dart
+├── shared
+│   ├── services
+│   │   ├── image_service.dart
+│   │   └── location_service.dart
+│   └── widgets
+│       ├── app_text_field.dart
+│       ├── full_screen_image_gallery.dart
+│       ├── image_carousel.dart
+│       └── loading_overlay.dart
+└── utils
+    ├── logo_generator.dart
+    ├── notification_helper.dart
+    └── setup_assets.dart
+
+58 directories, 96 files

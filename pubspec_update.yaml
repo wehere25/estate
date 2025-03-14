@@ -1,0 +1,16 @@
+# Additional packages to add to your pubspec.yaml:
+
+dependencies:
+  # ...existing dependencies
+  
+  # Firebase packages
+  firebase_auth: ^4.7.3 # Make sure this is included
+  
+  # Formatting and data handling
+  intl: ^0.18.1
+  path: ^1.8.3
+  uuid: ^4.0.0
+  
+  # UI Components
+  flutter_quill: ^7.4.6  # Ensure you're using this version or later
+  carousel_slider: ^5.0.0  # This should already be there

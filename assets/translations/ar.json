@@ -1,0 +1,27 @@
+{
+  "app": {
+    "name": "تطبيق العقارات"
+  },
+  "auth": {
+    "login": "تسجيل الدخول",
+    "register": "إنشاء حساب",
+    "email": "البريد الإلكتروني",
+    "password": "كلمة المرور",
+    "confirmPassword": "تأكيد كلمة المرور",
+    "forgotPassword": "نسيت كلمة المرور؟"
+  },
+  "property": {
+    "search": "البحث عن العقارات",
+    "filter": {
+      "all": "الكل",
+      "house": "منزل",
+      "apartment": "شقة",
+      "villa": "فيلا"
+    },
+    "details": {
+      "bedrooms": "غرف النوم",
+      "bathrooms": "الحمامات",
+      "area": "المساحة"
+    }
+  }
+}

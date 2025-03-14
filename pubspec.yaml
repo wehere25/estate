@@ -1,0 +1,112 @@
+name: azharapp
+description: A real estate application
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  cupertino_icons: 1.0.6
+  
+  # Firebase packages
+  firebase_core: ^2.32.0
+  firebase_auth: 4.20.0
+  cloud_firestore: ^4.8.2
+  firebase_storage: ^11.2.4
+  firebase_messaging: 14.7.10
+  firebase_app_check: 0.2.1+8
+  cloud_functions: 4.7.6
+  
+  # Location services
+  geolocator: ^10.1.0
+  geocoding: ^2.1.1
+  geocoding_android: ^3.3.1  # Updated to recommended version
+  geocoding_ios: ^2.1.1
+  
+  # State management
+  provider: 6.1.1
+  flutter_hooks: 0.21.2
+  
+  # UI components
+  carousel_slider: 5.0.0
+  flutter_map: 7.0.2
+  flutter_map_marker_cluster: 1.4.0
+  latlong2: 0.9.1
+  photo_view: 0.15.0
+  shimmer: 3.0.0
+  fl_chart: 0.70.2
+  cached_network_image: 3.3.1
+  flutter_svg: 2.0.9
+  
+  
+  # Forms and validation
+  flutter_form_builder: 9.1.1
+  form_builder_validators: 9.1.0
+  formz: 0.8.0
+  
+  # Device services
+  image_picker: 1.0.7
+  permission_handler: 11.4.0
+  shared_preferences: 2.5.2
+  url_launcher: 6.2.3
+  connectivity_plus: 5.0.2
+  flutter_local_notifications: 18.0.1
+  
+  # Utils
+  intl: ^0.19.0
+  uuid: ^4.3.3
+  path: ^1.8.3
+  http: ^1.1.0  # Downgraded to be compatible with package_info_plus
+  package_info_plus: ^8.3.0  # Upgraded as suggested
+  json_annotation: ^4.9.0
+  json_serializable: ^6.9.4
+  timeago: ^3.6.0
+  
+  # Navigation
+  go_router: ^13.0.1
+  
+  # Fonts
+  google_fonts: ^6.1.0
+  
+  # App restart utility
+  flutter_phoenix: ^1.1.1
+  markdown_editor_plus: ^0.2.15
+  google_sign_in: ^6.2.2
+  flutter_riverpod: ^2.6.1
+  share_plus: ^10.1.4
+   # Keep only this one
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^2.0.0
+  build_runner: ^2.4.8
+
+# Force all packages to use specific versions that are compatible
+dependency_overrides:
+  intl: ^0.19.0
+  http: ^1.1.0  # Override to an older version that works with package_info_plus
+  web: ^0.5.0  # Explicitly set web version to ensure compatibility
+
+flutter:
+  uses-material-design: true
+  
+  assets:
+    - assets/images/properties/
+    - assets/images/logos/
+    - assets/translations/
+    - assets/images/google_logo.png
+  
+  fonts:
+    - family: Poppins
+      fonts:
+        - asset: assets/fonts/Poppins-Regular.ttf
+        - asset: assets/fonts/Poppins-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Poppins-Bold.ttf
+          weight: 700
