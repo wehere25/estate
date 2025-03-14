@@ -12,21 +12,23 @@ import 'core/theme/theme_provider.dart';
 import 'core/utils/debug_logger.dart';
 import 'core/services/global_auth_service.dart';
 import 'core/utils/navigation_logger.dart';
-import 'features/auth/domain/providers/auth_provider.dart';
+import 'core/navigation/app_router.dart';
+import 'core/theme/app_theme.dart';
+
+// Feature imports
+import 'features/notifications/presentation/providers/notification_provider.dart'
+    as notifications;
+import 'features/notifications/domain/services/notification_service.dart';
+import 'features/notifications/data/notification_repository.dart';
 import 'features/property/data/property_repository.dart';
 import 'features/favorites/providers/favorites_provider.dart';
 import 'features/property/presentation/providers/property_provider.dart';
 import 'features/storage/providers/storage_provider.dart';
-import 'core/providers/provider_container.dart';
-import 'core/navigation/app_router.dart';
-import 'core/theme/app_theme.dart';
 import 'features/home/providers/home_provider.dart';
+import 'features/auth/domain/providers/auth_provider.dart'; // Updated import path
 
 // Make globalAuthService accessible throughout the app
 final GlobalAuthService globalAuthService = GlobalAuthService();
-
-// Flag to track if App Check was successfully initialized
-bool _isAppCheckInitialized = false;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -43,19 +45,16 @@ Future<void> main() async {
       );
       DebugLogger.info('✅ Firebase initialized successfully');
     } else {
-      // If Firebase is already initialized, use the existing instance
       DebugLogger.info(
           '✅ Firebase was already initialized, using existing instance');
     }
 
     // Initialize App Check with proper error handling
-    // Do this before auth initialization to ensure tokens are available
     try {
       await _initializeAppCheck();
-      _isAppCheckInitialized = true;
+      DebugLogger.info('✅ App Check initialized successfully');
     } catch (e) {
       // Don't fail the app just because App Check failed
-      _isAppCheckInitialized = false;
       DebugLogger.error(
           '❌ Firebase App Check initialization error - continuing anyway', e);
     }
@@ -87,17 +86,16 @@ Future<void> main() async {
   final sharedPreferences = await SharedPreferences.getInstance();
   final propertyRepository = PropertyRepository();
 
-  // Initialize global provider container
-  final providerContainer = ProviderContainer();
-  providerContainer.initialize();
-  DebugLogger.provider('Provider container initialized');
-
   // Initialize navigation logger
   NavigationLogger.log(
     NavigationEventType.routeGeneration,
     'App starting',
     data: {'buildMode': kReleaseMode ? 'RELEASE' : 'DEBUG'},
   );
+
+  // Initialize notification service
+  final notificationService = NotificationService();
+  await notificationService.initialize();
 
   // Build and run app
   DebugLogger.info('🏁 Starting app with MultiProvider');
@@ -113,8 +111,18 @@ Future<void> main() async {
         ChangeNotifierProvider<ThemeProvider>(
           create: (_) => ThemeProvider(),
         ),
+        ChangeNotifierProvider<notifications.NotificationProvider>(
+          create: (_) => notifications.NotificationProvider(
+            NotificationRepository(),
+            NotificationService(),
+          ),
+        ),
         ChangeNotifierProvider<PropertyProvider>(
-          create: (_) => PropertyProvider(propertyRepository),
+          create: (context) => PropertyProvider(
+            PropertyRepository(),
+            Provider.of<notifications.NotificationProvider>(context,
+                listen: false),
+          ),
         ),
         ChangeNotifierProvider<FavoritesProvider>(
           create: (_) =>
@@ -123,6 +131,7 @@ Future<void> main() async {
         ChangeNotifierProvider<StorageProvider>(
           create: (_) => StorageProvider(),
         ),
+        Provider<NotificationService>.value(value: notificationService),
       ],
       child: const AppWithErrorBoundary(),
     ),
@@ -176,8 +185,7 @@ Future<void> _initializeAppCheck() async {
         // On final failure, log and continue without App Check
         DebugLogger.warning(
             '⚠️ Failed to initialize App Check after $maxAttempts attempts. App will continue without App Check verification.');
-        // Set a flag to indicate App Check is not active
-        _isAppCheckInitialized = false;
+        // Just return without setting any status
         return;
       }
 
@@ -315,9 +323,19 @@ class MyApp extends StatelessWidget {
           ChangeNotifierProvider(create: (_) => ThemeProvider()),
           ChangeNotifierProvider(create: (_) => AuthProvider()),
           ChangeNotifierProvider(create: (_) => HomeProvider()),
-          // Add PropertyProvider to the MultiProvider
+          // Add PropertyProvider to the MultiProvider with NotificationProvider
+          ChangeNotifierProvider<PropertyProvider>(
+              create: (_) => PropertyProvider(
+                    PropertyRepository(),
+                    Provider.of<notifications.NotificationProvider>(_,
+                        listen: false),
+                  )),
+          // Make sure to add NotificationProvider before PropertyProvider
           ChangeNotifierProvider(
-              create: (_) => PropertyProvider(PropertyRepository())),
+              create: (_) => notifications.NotificationProvider(
+                    NotificationRepository(),
+                    NotificationService(),
+                  )),
           // Other providers
         ],
         child: Consumer<ThemeProvider>(

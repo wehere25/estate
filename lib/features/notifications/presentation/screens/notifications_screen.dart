@@ -1,108 +1,91 @@
 import 'package:flutter/material.dart';
-import '../../../../core/constants/app_colors.dart';
+import 'package:provider/provider.dart';
+import '../providers/notification_provider.dart';
+import '../../../../features/auth/domain/providers/auth_provider.dart'; // Updated import path
+import '../widgets/notification_card.dart';
+import '../../data/notification_model.dart';
 
-class NotificationsScreen extends StatelessWidget {
+class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({Key? key}) : super(key: key);
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Notifications'),
-        backgroundColor: AppColors.lightColorScheme.primary,
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: const [
-          NotificationItem(
-            title: 'Price Drop',
-            message: 'A property you liked has reduced its price by 5%',
-            time: '2 hours ago',
-            isRead: false,
-          ),
-          NotificationItem(
-            title: 'New Property Match',
-            message: 'A new property matching your search criteria was added',
-            time: '1 day ago',
-            isRead: true,
-          ),
-          NotificationItem(
-            title: 'Viewing Reminder',
-            message: 'Your property viewing is scheduled for tomorrow at 2 PM',
-            time: '2 days ago',
-            isRead: true,
-          ),
-        ],
-      ),
-    );
-  }
+  State<NotificationsScreen> createState() => _NotificationsScreenState();
 }
 
-class NotificationItem extends StatelessWidget {
-  final String title;
-  final String message;
-  final String time;
-  final bool isRead;
+class _NotificationsScreenState extends State<NotificationsScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializeNotifications();
+    });
+  }
 
-  const NotificationItem({
-    Key? key,
-    required this.title,
-    required this.message,
-    required this.time,
-    required this.isRead,
-  }) : super(key: key);
+  void _initializeNotifications() {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final notificationProvider =
+        Provider.of<NotificationProvider>(context, listen: false);
+    final userId = authProvider.user?.uid;
+
+    if (userId != null) {
+      notificationProvider.initialize(userId);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: CircleAvatar(
-          backgroundColor: isRead 
-              ? Colors.grey.shade200
-              : AppColors.lightColorScheme.primaryContainer,
-          child: Icon(
-            Icons.notifications,
-            color: isRead 
-              ? Colors.grey.shade600
-              : AppColors.lightColorScheme.primary,
-          ),
-        ),
-        title: Text(
-          title,
-          style: TextStyle(
-            fontWeight: isRead ? FontWeight.normal : FontWeight.bold,
-          ),
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 4),
-            Text(message),
-            const SizedBox(height: 4),
-            Text(
-              time,
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey.shade600,
-                fontStyle: FontStyle.italic,
-              ),
+    final notificationProvider = Provider.of<NotificationProvider>(context);
+    final authProvider = Provider.of<AuthProvider>(context);
+    final userId = authProvider.user?.uid;
+
+    if (userId == null) {
+      return const Center(child: Text('Please sign in to view notifications'));
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Notifications'),
+        actions: [
+          if (notificationProvider.notifications.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.done_all),
+              onPressed: () {
+                notificationProvider.markAllAsRead(userId);
+              },
+              tooltip: 'Mark all as read',
             ),
-          ],
-        ),
-        trailing: isRead 
-            ? null
-            : Container(
-                width: 12,
-                height: 12,
-                decoration: BoxDecoration(
-                  color: AppColors.lightColorScheme.primary,
-                  shape: BoxShape.circle,
-                ),
-              ),
+        ],
       ),
+      body: notificationProvider.isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _buildNotificationsList(notificationProvider.notifications),
+    );
+  }
+
+  Widget _buildNotificationsList(List<NotificationModel> notifications) {
+    if (notifications.isEmpty) {
+      return const Center(
+        child: Text('No notifications'),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(8),
+      itemCount: notifications.length,
+      itemBuilder: (context, index) {
+        final notification = notifications[index];
+        return NotificationCard(
+          notification: notification,
+          onTap: () {
+            Provider.of<NotificationProvider>(context, listen: false)
+                .markAsRead(notification.id);
+          },
+          onDelete: () {
+            Provider.of<NotificationProvider>(context, listen: false)
+                .deleteNotification(notification.id);
+          },
+        );
+      },
     );
   }
 }

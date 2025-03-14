@@ -4,6 +4,9 @@ import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:go_router/go_router.dart';
+import 'package:firebase_auth/firebase_auth.dart'
+    hide AuthProvider; // Hide Firebase's AuthProvider
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '/core/constants/app_colors.dart';
 import '/core/utils/snackbar_utils.dart';
 import '/features/favorites/providers/favorites_provider.dart';
@@ -11,6 +14,7 @@ import '/core/theme/theme_provider.dart';
 import '/core/services/global_auth_service.dart' show GlobalAuthService;
 import '../../../../features/auth/domain/providers/auth_provider.dart';
 import '../../../../features/auth/domain/services/admin_service.dart';
+import './about_developer_screen.dart'; // Import the AboutDeveloperScreen
 
 class ProfileScreen extends StatelessWidget {
   final bool showNavBar;
@@ -167,14 +171,13 @@ class _ProfileScreenContentState extends State<_ProfileScreenContent> {
   // User data with SharedPreferences integration
   late SharedPreferences _prefs;
   final Map<String, dynamic> _userData = {
-    'name': 'John Doe',
-    'email': 'john.doe@example.com',
-    'phone': '+1 (555) 123-4567',
+    'name': 'Loading...',
+    'email': 'Loading...',
+    'phone': '',
     'profileImage': 'https://randomuser.me/api/portraits/men/32.jpg',
-    'joinDate':
-        DateTime.now().subtract(const Duration(days: 365)).toIso8601String(),
+    'joinDate': DateTime.now().toIso8601String(),
     'role': 'User',
-    'bio': 'Passionate about real estate and finding the perfect home.',
+    'bio': 'Loading profile information...',
   };
 
   // UI state
@@ -200,31 +203,80 @@ class _ProfileScreenContentState extends State<_ProfileScreenContent> {
     super.dispose();
   }
 
-  // Load user data from SharedPreferences with fixed context usage
+  // Load user data from Firebase Auth and SharedPreferences with fixed context usage
   Future<void> _loadUserData() async {
     if (!mounted) return;
     setState(() => _isLoading = true);
 
     try {
       _prefs = await SharedPreferences.getInstance();
+      final user = FirebaseAuth.instance.currentUser;
+
+      if (user == null) {
+        if (!mounted) return;
+        // User is not logged in, redirect to login
+        context.go('/login');
+        return;
+      }
+
+      // Get additional user data from Firestore if available
+      DocumentSnapshot? userDoc;
+      try {
+        userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .get();
+      } catch (e) {
+        debugPrint('Error fetching user document: $e');
+      }
 
       if (!mounted) return;
       setState(() {
-        _userData['name'] = _prefs.getString('user_name') ?? _userData['name'];
+        // Use Firebase Auth data as primary source
+        _userData['name'] =
+            user.displayName ?? _prefs.getString('user_name') ?? 'User';
         _userData['email'] =
-            _prefs.getString('user_email') ?? _userData['email'];
-        _userData['profileImage'] =
-            _prefs.getString('user_profile_image') ?? _userData['profileImage'];
-        _userData['bio'] = _prefs.getString('user_bio') ?? _userData['bio'];
-        _userData['role'] = _prefs.getString('user_role') ?? _userData['role'];
-        _userData['joinDate'] =
-            _prefs.getString('user_join_date') ?? _userData['joinDate'];
+            user.email ?? _prefs.getString('user_email') ?? 'No email';
 
-        // Load theme settings only
-        _isDarkMode = _prefs.getBool('settings_dark_mode') ?? false;
+        // Use Firestore data if available
+        if (userDoc != null && userDoc.exists) {
+          final data = userDoc.data() as Map<String, dynamic>?;
+          if (data != null) {
+            // If display name exists in Firestore but not in Auth, use Firestore value
+            if (user.displayName == null && data['displayName'] != null) {
+              _userData['name'] = data['displayName'];
+            }
+
+            // Get creation date from Firestore
+            if (data['createdAt'] != null) {
+              if (data['createdAt'] is Timestamp) {
+                _userData['joinDate'] =
+                    (data['createdAt'] as Timestamp).toDate().toIso8601String();
+              }
+            }
+
+            // Get role from Firestore
+            if (data['role'] != null) {
+              _userData['role'] = data['role'];
+            }
+
+            // Get bio from Firestore if available
+            if (data['bio'] != null) {
+              _userData['bio'] = data['bio'];
+            }
+          }
+        }
+
+        // Fallback to SharedPreferences for other data
+        _userData['profileImage'] = user.photoURL ??
+            _prefs.getString('user_profile_image') ??
+            _userData['profileImage'];
 
         // Initialize controllers
         _nameController.text = _userData['name'];
+
+        // Load theme settings
+        _isDarkMode = _prefs.getBool('settings_dark_mode') ?? false;
       });
     } catch (e) {
       debugPrint('Error loading user data: $e');
@@ -1078,63 +1130,207 @@ class _ProfileScreenContentState extends State<_ProfileScreenContent> {
     final currentPasswordController = TextEditingController();
     final newPasswordController = TextEditingController();
     final confirmPasswordController = TextEditingController();
+    bool isLoading = false;
+    bool obscureCurrent = true;
+    bool obscureNew = true;
+    bool obscureConfirm = true;
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Change Password'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: currentPasswordController,
-                decoration: const InputDecoration(
-                  labelText: 'Current Password',
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Change Password'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: currentPasswordController,
+                  decoration: InputDecoration(
+                    labelText: 'Current Password',
+                    border: const OutlineInputBorder(),
+                    suffixIcon: IconButton(
+                      icon: Icon(obscureCurrent
+                          ? Icons.visibility_off
+                          : Icons.visibility),
+                      onPressed: () {
+                        setState(() {
+                          obscureCurrent = !obscureCurrent;
+                        });
+                      },
+                    ),
+                  ),
+                  obscureText: obscureCurrent,
                 ),
-                obscureText: true,
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: newPasswordController,
-                decoration: const InputDecoration(
-                  labelText: 'New Password',
+                const SizedBox(height: 16),
+                TextField(
+                  controller: newPasswordController,
+                  decoration: InputDecoration(
+                    labelText: 'New Password',
+                    border: const OutlineInputBorder(),
+                    helperText: 'At least 6 characters',
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                          obscureNew ? Icons.visibility_off : Icons.visibility),
+                      onPressed: () {
+                        setState(() {
+                          obscureNew = !obscureNew;
+                        });
+                      },
+                    ),
+                  ),
+                  obscureText: obscureNew,
                 ),
-                obscureText: true,
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: confirmPasswordController,
-                decoration: const InputDecoration(
-                  labelText: 'Confirm New Password',
+                const SizedBox(height: 16),
+                TextField(
+                  controller: confirmPasswordController,
+                  decoration: InputDecoration(
+                    labelText: 'Confirm New Password',
+                    border: const OutlineInputBorder(),
+                    suffixIcon: IconButton(
+                      icon: Icon(obscureConfirm
+                          ? Icons.visibility_off
+                          : Icons.visibility),
+                      onPressed: () {
+                        setState(() {
+                          obscureConfirm = !obscureConfirm;
+                        });
+                      },
+                    ),
+                  ),
+                  obscureText: obscureConfirm,
                 ),
-                obscureText: true,
-              ),
-            ],
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            if (isLoading)
+              const CircularProgressIndicator()
+            else
+              TextButton(
+                onPressed: () => _handlePasswordChange(
+                  dialogContext,
+                  currentPasswordController.text,
+                  newPasswordController.text,
+                  confirmPasswordController.text,
+                  () => setState(() => isLoading = true),
+                  () => setState(() => isLoading = false),
+                ),
+                child: const Text('Change'),
+              ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              if (newPasswordController.text !=
-                  confirmPasswordController.text) {
-                SnackBarUtils.showErrorSnackBar(
-                    context, 'New passwords do not match');
-                return;
-              }
-              Navigator.pop(context);
-              SnackBarUtils.showSuccessSnackBar(
-                  context, 'Password changed successfully');
-            },
-            child: const Text('Change'),
-          ),
-        ],
       ),
     );
+  }
+
+  // Handle the password change logic
+  Future<void> _handlePasswordChange(
+    BuildContext dialogContext,
+    String currentPassword,
+    String newPassword,
+    String confirmPassword,
+    VoidCallback setLoading,
+    VoidCallback clearLoading,
+  ) async {
+    // Create a reference to the context at the start
+    final contextRef = dialogContext;
+
+    // Validate inputs
+    if (currentPassword.isEmpty ||
+        newPassword.isEmpty ||
+        confirmPassword.isEmpty) {
+      SnackBarUtils.showErrorSnackBar(contextRef, 'All fields are required');
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      SnackBarUtils.showErrorSnackBar(
+          contextRef, 'New password must be at least 6 characters');
+      return;
+    }
+
+    if (newPassword != confirmPassword) {
+      SnackBarUtils.showErrorSnackBar(contextRef, 'New passwords do not match');
+      return;
+    }
+
+    setLoading();
+
+    try {
+      // Get current Firebase user
+      final user = FirebaseAuth.instance.currentUser;
+
+      if (user == null) {
+        SnackBarUtils.showErrorSnackBar(
+            contextRef, 'You must be logged in to change your password');
+        clearLoading();
+        return;
+      }
+
+      // Get user's email
+      final email = user.email;
+      if (email == null) {
+        SnackBarUtils.showErrorSnackBar(
+            contextRef, 'Unable to identify your account');
+        clearLoading();
+        return;
+      }
+
+      // Create auth credential with current password
+      final credential = EmailAuthProvider.credential(
+        email: email,
+        password: currentPassword,
+      );
+
+      // Reauthenticate user
+      await user.reauthenticateWithCredential(credential);
+
+      // Update password
+      await user.updatePassword(newPassword);
+
+      // Close dialog - use the reference passed to this method
+      Navigator.pop(contextRef);
+
+      // Show success message
+      if (mounted) {
+        SnackBarUtils.showSuccessSnackBar(
+            contextRef, 'Password changed successfully');
+      }
+    } catch (e) {
+      debugPrint('Error changing password: $e');
+
+      String errorMessage = 'Failed to change password';
+
+      if (e is FirebaseAuthException) {
+        switch (e.code) {
+          case 'wrong-password':
+            errorMessage = 'Current password is incorrect';
+            break;
+          case 'requires-recent-login':
+            errorMessage = 'Please log in again before changing your password';
+            // Force re-login by signing out
+            await FirebaseAuth.instance.signOut();
+            if (mounted) {
+              // Navigate to login screen with mounted check
+              contextRef.go('/login');
+            }
+            break;
+          default:
+            errorMessage = 'Error: ${e.message}';
+        }
+      }
+
+      if (mounted) {
+        SnackBarUtils.showErrorSnackBar(contextRef, errorMessage);
+      }
+    } finally {
+      clearLoading();
+    }
   }
 
   // Support screen
@@ -1191,19 +1387,11 @@ class _ProfileScreenContentState extends State<_ProfileScreenContent> {
 
   // About screen
   void _navigateToAbout() {
-    debugPrint('ProfileScreen: Navigating to About');
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('About'),
-        content: const Text('This is a real estate app. Version 1.0.0'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
-          ),
-        ],
+    debugPrint('ProfileScreen: Navigating to About Developer');
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const AboutDeveloperScreen(),
       ),
     );
   }

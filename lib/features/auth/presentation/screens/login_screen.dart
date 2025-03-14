@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/utils/debug_logger.dart';
 import '../../domain/providers/auth_provider.dart';
@@ -23,7 +24,6 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
-    // Initialize _rememberMe from the AuthProvider on screen load
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       setState(() {
@@ -106,24 +106,41 @@ class _LoginScreenState extends State<LoginScreen> {
 
                       SizedBox(height: screenSize.height * 0.03),
 
-                      const Text(
-                        'Welcome Back',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-
-                      const SizedBox(height: 8),
-
-                      const Text(
-                        'Sign in to continue',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.white70,
+                      // Welcome Text with animation
+                      TweenAnimationBuilder(
+                        duration: const Duration(milliseconds: 800),
+                        tween: Tween<double>(begin: 0, end: 1),
+                        builder: (context, double value, child) {
+                          return Opacity(
+                            opacity: value,
+                            child: child,
+                          );
+                        },
+                        child: Column(
+                          children: [
+                            Text(
+                              'Welcome Back',
+                              textAlign: TextAlign.center,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .headlineMedium
+                                  ?.copyWith(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 32,
+                                  ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Sign in to continue',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodyLarge
+                                  ?.copyWith(
+                                    color: Colors.white.withOpacity(0.9),
+                                  ),
+                            ),
+                          ],
                         ),
                       ),
 
@@ -280,9 +297,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                                 const SizedBox(height: 16),
                                 OutlinedButton.icon(
-                                  onPressed: () {
-                                    _handleGoogleSignIn(context);
-                                  },
+                                  onPressed: _isSubmitting
+                                      ? null
+                                      : () => _handleGoogleSignIn(context),
                                   style: OutlinedButton.styleFrom(
                                     padding: const EdgeInsets.symmetric(
                                         vertical: 16),
@@ -294,9 +311,10 @@ class _LoginScreenState extends State<LoginScreen> {
                                       borderRadius: BorderRadius.circular(8),
                                     ),
                                   ),
-                                  icon: Image.asset(
-                                    'assets/images/google_logo.png',
+                                  icon: SvgPicture.asset(
+                                    'assets/images/google_g_logo.svg',
                                     height: 24,
+                                    width: 24,
                                   ),
                                   label: const Text(
                                     'Sign in with Google',
@@ -304,6 +322,36 @@ class _LoginScreenState extends State<LoginScreen> {
                                       fontSize: 16,
                                       fontWeight: FontWeight.w500,
                                     ),
+                                  ),
+                                ),
+
+                                // Fix overflow by wrapping Row in SingleChildScrollView
+                                const SizedBox(height: 24),
+                                SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        'Don\'t have an account?',
+                                        style: TextStyle(
+                                          color: Colors.white.withOpacity(0.9),
+                                        ),
+                                      ),
+                                      TextButton(
+                                        onPressed: () =>
+                                            context.push('/register'),
+                                        style: TextButton.styleFrom(
+                                          foregroundColor: Colors.white,
+                                        ),
+                                        child: const Text(
+                                          'Sign Up',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ],

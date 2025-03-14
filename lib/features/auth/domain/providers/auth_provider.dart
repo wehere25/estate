@@ -4,11 +4,12 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/utils/debug_logger.dart';
 import '../../../../core/utils/app_logger.dart';
-import '../enums/auth_status.dart'; // Fixed import
+import '../enums/auth_status.dart';
 import '../models/user_model.dart';
 import '../services/auth_service.dart';
 import '../services/google_auth_service.dart';
-import '../services/admin_service.dart'; // Add import for AdminService
+import '../services/admin_service.dart';
+import '../services/user_profile_service.dart'; // Added missing import
 
 /// Provider for authentication state and operations
 class AuthProvider with ChangeNotifier {
@@ -183,13 +184,13 @@ class AuthProvider with ChangeNotifier {
       final user =
           await _authService.createUserWithEmailAndPassword(email, password);
       if (user != null) {
-        // Update display name
+        // Update display name in Firebase Auth
         await _authService.updateUserProfile(displayName: displayName);
 
         // Get updated user
         _user = _authService.getCurrentUser();
 
-        // Create user document in Firestore
+        // Create user document in Firestore with displayName and timestamp
         final userMap = {
           'email': email,
           'displayName': displayName,
@@ -202,15 +203,16 @@ class AuthProvider with ChangeNotifier {
             .doc(_user!.uid)
             .set(userMap, SetOptions(merge: true));
 
-        await _fetchUserModel();
+        // Also save to UserProfileService for local backup
+        await UserProfileService.saveUserProfile(_user!, name: displayName);
+
         _status = AuthStatus.authenticated;
-        DebugLogger.auth('User registered: $email');
+        DebugLogger.auth('User registered and signed in: ${user.email}');
         notifyListeners();
         return true;
       } else {
-        _error = 'Failed to register user';
+        _error = 'Failed to register';
         _status = AuthStatus.error;
-        DebugLogger.error('Registration failed - no user returned');
         notifyListeners();
         return false;
       }
@@ -282,6 +284,51 @@ class AuthProvider with ChangeNotifier {
       DebugLogger.error('Google sign in failed', e);
       notifyListeners();
       return false;
+    }
+  }
+
+  /// Sign in anonymously as a guest
+  Future<bool> signInAnonymously() async {
+    _setLoading(true);
+    _error = null;
+
+    try {
+      DebugLogger.auth('Starting anonymous sign in');
+      final credential =
+          await firebase_auth.FirebaseAuth.instance.signInAnonymously();
+
+      if (credential.user != null) {
+        _user = credential.user;
+        _status = AuthStatus.authenticated;
+
+        // Create a basic user document for anonymous users
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(_user!.uid)
+            .set({
+          'isAnonymous': true,
+          'lastLogin': FieldValue.serverTimestamp(),
+          'role': 'guest',
+        }, SetOptions(merge: true));
+
+        await _fetchUserModel();
+        DebugLogger.auth('Anonymous sign in successful');
+        notifyListeners();
+        return true;
+      } else {
+        _error = 'Failed to sign in anonymously';
+        _status = AuthStatus.error;
+        notifyListeners();
+        return false;
+      }
+    } catch (e) {
+      _error = _handleAuthError(e);
+      _status = AuthStatus.error;
+      DebugLogger.error('Anonymous sign in failed', e);
+      notifyListeners();
+      return false;
+    } finally {
+      _setLoading(false);
     }
   }
 

@@ -32,6 +32,7 @@ import '../../features/admin/presentation/screens/manage_users_screen.dart';
 import '../../features/admin/presentation/screens/manage_properties_screen.dart';
 import '../../features/admin/presentation/screens/analytics_screen.dart';
 import '../../features/admin/presentation/screens/property_edit_screen.dart';
+import '../../features/notifications/presentation/screens/notifications_screen.dart';
 
 // Utils
 import '../../core/utils/debug_logger.dart';
@@ -299,16 +300,6 @@ class AppRouter {
           builder: (context, state) => const ProfileScreen(showNavBar: true),
           // User profile overview page showing personal details and settings access
         ),
-        GoRoute(
-          path: '/notifications',
-          name: 'notifications',
-          builder: (context, state) => Scaffold(
-            appBar: AppBar(title: const Text('Notifications')),
-            body:
-                const Center(child: Text('Notifications Screen - Coming Soon')),
-          ),
-          // Displays app notifications like price drops or new messages
-        ),
 
         // AUTHENTICATED USER ROUTES
         GoRoute(
@@ -335,17 +326,6 @@ class AppRouter {
           path: '/profile/support',
           name: 'support',
           builder: (context, state) => const SupportScreen(),
-        ),
-
-        // Placeholder for notifications until actual screen is created
-        GoRoute(
-          path: '/notifications',
-          name: 'notifications',
-          builder: (context, state) => Scaffold(
-            appBar: AppBar(title: const Text('Notifications')),
-            body:
-                const Center(child: Text('Notifications Screen - Coming Soon')),
-          ),
         ),
 
         // PROPERTY MANAGEMENT ROUTES
@@ -572,11 +552,7 @@ class AppRouter {
         GoRoute(
           path: '/notifications',
           name: 'notifications',
-          builder: (context, state) => Scaffold(
-            appBar: AppBar(title: const Text('Notifications')),
-            body:
-                const Center(child: Text('Notifications Screen - Coming Soon')),
-          ),
+          builder: (context, state) => const NotificationsScreen(),
         ),
         GoRoute(
           path: '/property/add',
@@ -891,33 +867,12 @@ class AppRouter {
           routes: [
             GoRoute(
               path: '/notifications',
-              builder: (context, state) => Scaffold(
-                appBar: AppBar(title: const Text('Notifications')),
-                body: const Center(
-                    child: Text('Notifications Screen - Coming Soon')),
-              ),
+              builder: (context, state) => const NotificationsScreen(),
             ),
           ],
         ),
       ],
     );
-  }
-
-  // Helper method to navigate by index - extracted for cleaner code
-  static void _navigateByIndex(BuildContext context, int index, bool isAdmin) {
-    if (index == 0) {
-      context.go('/home');
-    } else if (index == 1) {
-      context.go('/search');
-    } else if (index == 2 && isAdmin) {
-      context.go('/property/upload');
-    } else if ((index == 3 && isAdmin) || (index == 2 && !isAdmin)) {
-      context.go('/favorites');
-    } else if ((index == 4 && isAdmin) || (index == 3 && !isAdmin)) {
-      context.go('/profile');
-    } else if ((index == 5 && isAdmin) || (index == 4 && !isAdmin)) {
-      context.go('/notifications');
-    }
   }
 
   // Fallback router creation

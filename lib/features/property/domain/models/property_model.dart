@@ -2,7 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 enum PropertyType { house, apartment, condo, townhouse, land, commercial }
 
-enum PropertyStatus { available, pending, sold, rented }
+enum PropertyStatus { available, pending, sold, rented, unavailable }
 
 class PropertyOwner {
   final String uid;

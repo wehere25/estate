@@ -154,6 +154,14 @@ service cloud.firestore {
       allow read, write: if isDebugMode() && isAuthenticated();
     }
     
+    // Notifications collection rules
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && request.auth.uid == resource.data.userId;
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && request.auth.uid == resource.data.userId;
+      allow delete: if isAuthenticated() && request.auth.uid == resource.data.userId;
+    }
+    
     // Default deny
     match /{document=**} {
       allow read, write: if false;

@@ -101,6 +101,8 @@ flutter:
     - assets/images/logos/
     - assets/translations/
     - assets/images/google_logo.png
+    - assets/icons/
+    - assets/images/google_g_logo.svg
   
   fonts:
     - family: Poppins

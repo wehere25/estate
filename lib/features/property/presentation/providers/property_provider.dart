@@ -6,11 +6,14 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '/core/utils/dev_utils.dart'; // Add this import for DevUtils
 import '../../domain/models/property_model.dart';
 import '../../data/property_repository.dart';
+import '../../../notifications/presentation/providers/notification_provider.dart';
+import '../../../notifications/data/notification_model.dart'; // Import for NotificationType
 
 class PropertyProvider with ChangeNotifier {
   final PropertyRepository _repository;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final NotificationProvider _notificationProvider;
 
   bool _isLoading = false;
   List<PropertyModel> _properties = [];
@@ -21,7 +24,7 @@ class PropertyProvider with ChangeNotifier {
   String? _error;
   Map<String, dynamic> _filters = {};
 
-  PropertyProvider(this._repository);
+  PropertyProvider(this._repository, this._notificationProvider);
 
   // Getters
   bool get isLoading => _isLoading;
@@ -89,21 +92,12 @@ class PropertyProvider with ChangeNotifier {
   // Helper method to update recent properties
   Future<void> _updateRecentProperties() async {
     try {
-      // This is important - we need to also include dev mode properties
       if (DevUtils.isDev && DevUtils.bypassAuth) {
-        // When in dev mode, make sure recently added dev properties appear in the list
         _recentProperties = _properties;
       } else {
-        // Normal fetch from repository - sort the already loaded properties by date
         _recentProperties = List.from(_properties);
-        _recentProperties.sort((a, b) {
-          if (a.createdAt == null && b.createdAt == null) return 0;
-          if (a.createdAt == null) return 1;
-          if (b.createdAt == null) return -1;
-          return b.createdAt!.compareTo(a.createdAt!);
-        });
+        _recentProperties.sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
-        // Limit to 10 most recent
         if (_recentProperties.length > 10) {
           _recentProperties = _recentProperties.sublist(0, 10);
         }
@@ -217,6 +211,15 @@ class PropertyProvider with ChangeNotifier {
         'action': 'create',
       });
 
+      // Create notification after successful property creation
+      final property = await getPropertyById(docRef.id);
+      if (property != null) {
+        await _notificationProvider.createPropertyNotification(
+          property: property,
+          type: NotificationType.propertyListed,
+        );
+      }
+
       _error = null;
     } catch (e) {
       _error = e.toString();
@@ -230,7 +233,9 @@ class PropertyProvider with ChangeNotifier {
       String id, Map<String, dynamic> updatedData) async {
     _setLoading(true);
     try {
-      // In production mode, we need to authenticate properly
+      // Store original property for comparison
+      final originalProperty = await getPropertyById(id);
+
       final currentUser = _auth.currentUser;
       if (currentUser == null) {
         throw Exception('User not authenticated');
@@ -251,13 +256,35 @@ class PropertyProvider with ChangeNotifier {
         'action': 'update',
       });
 
-      // Update local state after successfully saving to Firestore
-      await fetchProperties(); // Refresh the property list
+      // Check for price or status changes and create notifications
+      final updatedProperty = await getPropertyById(id);
+      if (updatedProperty != null) {
+        if (originalProperty != null &&
+            updatedData.containsKey('price') &&
+            originalProperty.price != updatedData['price']) {
+          await _notificationProvider.createPropertyNotification(
+            property: updatedProperty,
+            type: NotificationType.priceChange,
+          );
+        }
+
+        if (originalProperty != null &&
+            updatedData.containsKey('status') &&
+            originalProperty.status != updatedData['status']) {
+          await _notificationProvider.createPropertyNotification(
+            property: updatedProperty,
+            type: NotificationType.statusChange,
+          );
+        }
+      }
+
+      // Update local state
+      await fetchProperties();
 
       _error = null;
     } catch (e) {
       _error = e.toString();
-      debugPrint('Error updating property: $e');
+      DevUtils.log('Error updating property: $e');
     } finally {
       _setLoading(false);
     }
@@ -388,6 +415,15 @@ class PropertyProvider with ChangeNotifier {
           'newStatus': status.toString().split('.').last,
         }
       });
+
+      // Create notification after successful status change
+      final property = await getPropertyById(id);
+      if (property != null) {
+        await _notificationProvider.createPropertyNotification(
+          property: property,
+          type: NotificationType.statusChange,
+        );
+      }
 
       _error = null;
     } catch (e) {
@@ -624,6 +660,28 @@ class PropertyProvider with ChangeNotifier {
           'action': 'create',
         });
 
+        // Send notification to all users about new property
+        await _notificationProvider.createPropertyNotification(
+            property: PropertyModel(
+              id: documentId,
+              title: propertyData['title'] as String,
+              description: propertyData['description'] as String,
+              price: (propertyData['price'] as num).toDouble(),
+              ownerId: currentUser.uid,
+              bedrooms: propertyData['bedrooms'] as int,
+              bathrooms: propertyData['bathrooms'] as int,
+              area: propertyData['area'] as double,
+              createdAt: DateTime.now(),
+              updatedAt: DateTime.now(),
+              type: _stringToPropertyType(propertyData['type'] as String?),
+              status:
+                  _stringToPropertyStatus(propertyData['status'] as String?),
+              propertyType: propertyData['propertyType'] as String? ?? 'House',
+              listingType: propertyData['listingType'] as String? ?? 'sale',
+            ),
+            type: NotificationType.propertyListed,
+            sendToAllUsers: true);
+
         // After successfully adding property, refresh all property lists
         await fetchProperties();
       }
@@ -634,6 +692,41 @@ class PropertyProvider with ChangeNotifier {
       DevUtils.log('Error adding property: $e');
     } finally {
       _setLoading(false);
+    }
+  }
+
+  // Helper methods to convert strings to enums
+  PropertyType _stringToPropertyType(String? type) {
+    switch (type?.toLowerCase()) {
+      case 'house':
+        return PropertyType.house;
+      case 'apartment':
+        return PropertyType.apartment;
+      case 'condo':
+        return PropertyType.condo;
+      case 'land':
+        return PropertyType.land;
+      case 'commercial':
+        return PropertyType.commercial;
+      default:
+        return PropertyType.house;
+    }
+  }
+
+  PropertyStatus _stringToPropertyStatus(String? status) {
+    switch (status?.toLowerCase()) {
+      case 'available':
+        return PropertyStatus.available;
+      case 'sold':
+        return PropertyStatus.sold;
+      case 'rented':
+        return PropertyStatus.rented;
+      case 'pending':
+        return PropertyStatus.pending;
+      case 'unavailable':
+        return PropertyStatus.unavailable;
+      default:
+        return PropertyStatus.available;
     }
   }
 }

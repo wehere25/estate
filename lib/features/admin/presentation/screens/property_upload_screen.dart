@@ -16,6 +16,7 @@ import '/features/storage/providers/storage_provider.dart';
 import 'package:azharapp/features/auth/domain/providers/auth_provider.dart';
 import '/core/utils/dev_utils.dart';
 import '../../../../core/navigation/app_navigation.dart'; // Updated import
+import '/features/admin/presentation/widgets/map_section_form.dart';
 
 class PropertyUploadScreen extends StatefulWidget {
   final PropertyModel? propertyToEdit;
@@ -151,62 +152,72 @@ class _PropertyUploadScreenState extends State<PropertyUploadScreen> {
     });
 
     try {
-      // Check permission
-      final permission = await Geolocator.checkPermission();
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
 
-      if (permission == LocationPermission.denied) {
-        final requestPermission = await Geolocator.requestPermission();
-        if (requestPermission == LocationPermission.denied) {
-          if (mounted) {
-            SnackBarUtils.showErrorSnackBar(
-                context, 'Location permission denied');
-          }
-          setState(() {
-            _isLoadingLocation = false;
-          });
-          return;
-        }
-      }
+      // Update location fields
+      setState(() {
+        _latitude = position.latitude;
+        _longitude = position.longitude;
+        _isLoadingLocation = false;
+      });
 
-      if (permission == LocationPermission.deniedForever) {
-        if (mounted) {
-          SnackBarUtils.showErrorSnackBar(
-              context, 'Location permissions are permanently denied');
-        }
-        setState(() {
-          _isLoadingLocation = false;
-        });
-        return;
-      }
-
-      // Get current position
-      final position = await Geolocator.getCurrentPosition();
-
-      // Get address from coordinates
-      final placemarks = await placemarkFromCoordinates(
+      // Get address for the location
+      List<Placemark> placemarks = await placemarkFromCoordinates(
         position.latitude,
         position.longitude,
       );
 
       if (placemarks.isNotEmpty) {
-        final place = placemarks.first;
-        final address =
-            '${place.street}, ${place.subLocality}, ${place.locality}, ${place.postalCode}, ${place.country}';
-
+        Placemark place = placemarks.first;
         setState(() {
-          _addressController.text = address;
-          _latitude = position.latitude;
-          _longitude = position.longitude;
-          _isLoadingLocation = false;
+          _addressController.text =
+              '${place.street}, ${place.locality}, ${place.postalCode}, ${place.country}';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _isLoadingLocation = false;
+      });
+
+      if (mounted) {
+        SnackBarUtils.showErrorSnackBar(
+            context, 'Error getting current location: $e');
+      }
+    }
+  }
+
+  // Update location from map selection
+  void _updateLocationFromMap(double latitude, double longitude) {
+    setState(() {
+      _latitude = latitude;
+      _longitude = longitude;
+    });
+
+    // Try to get address for the selected location
+    _getAddressFromCoordinates(latitude, longitude);
+  }
+
+  // Get address from coordinates
+  Future<void> _getAddressFromCoordinates(
+      double latitude, double longitude) async {
+    try {
+      List<Placemark> placemarks =
+          await placemarkFromCoordinates(latitude, longitude);
+
+      if (placemarks.isNotEmpty && mounted) {
+        Placemark place = placemarks.first;
+        setState(() {
+          _addressController.text =
+              '${place.street ?? ''}, ${place.locality ?? ''}, ${place.postalCode ?? ''}, ${place.country ?? ''}';
         });
       }
     } catch (e) {
       if (mounted) {
-        SnackBarUtils.showErrorSnackBar(context, 'Error getting location: $e');
+        SnackBarUtils.showErrorSnackBar(
+            context, 'Error getting address from coordinates: $e');
       }
-      setState(() {
-        _isLoadingLocation = false;
-      });
     }
   }
 
@@ -574,6 +585,12 @@ class _PropertyUploadScreenState extends State<PropertyUploadScreen> {
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ),
+        const SizedBox(height: 16),
+        MapSectionForm(
+          initialLatitude: _latitude,
+          initialLongitude: _longitude,
+          onLocationChanged: _updateLocationFromMap,
+        ),
       ],
     );
   }
