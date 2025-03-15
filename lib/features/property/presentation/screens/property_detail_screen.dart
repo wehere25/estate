@@ -71,23 +71,33 @@ class _PropertyDetailScreenState extends State<PropertyDetailScreen>
 
   // Check if this property is in favorites
   Future<void> _checkIfFavorite() async {
-    final favoritesProvider =
-        Provider.of<FavoritesProvider>(context, listen: false);
-    if (mounted) {
-      setState(() {
-        _isFavorite = favoritesProvider.isFavorite(widget.propertyId);
-      });
+    try {
+      final favoritesProvider =
+          Provider.of<FavoritesProvider>(context, listen: false);
+      if (mounted) {
+        setState(() {
+          _isFavorite = favoritesProvider.isFavorite(widget.propertyId);
+        });
+      }
+    } catch (e) {
+      // If provider is not available, default to false
+      if (mounted) {
+        setState(() {
+          _isFavorite = false;
+        });
+      }
+      debugPrint('FavoritesProvider not available: $e');
     }
   }
 
   // Toggle favorite status
   Future<void> _toggleFavorite() async {
-    final favoritesProvider =
-        Provider.of<FavoritesProvider>(context, listen: false);
-
     if (_property == null) return;
 
     try {
+      final favoritesProvider =
+          Provider.of<FavoritesProvider>(context, listen: false);
+
       if (_isFavorite) {
         await favoritesProvider.removeFromFavorites(widget.propertyId);
         if (mounted) {
@@ -106,9 +116,12 @@ class _PropertyDetailScreenState extends State<PropertyDetailScreen>
         });
       }
     } catch (e) {
+      // Handle case when provider is not available
       if (mounted) {
-        SnackBarUtils.showErrorSnackBar(context, 'Error updating favorites');
+        SnackBarUtils.showErrorSnackBar(
+            context, 'Error updating favorites. Please try again later.');
       }
+      debugPrint('Error toggling favorite: $e');
     }
   }
 
@@ -817,76 +830,74 @@ class _PropertyDetailScreenState extends State<PropertyDetailScreen>
       );
     }
 
-    return Hero(
-      tag: 'property_${property.id}',
-      child: SizedBox(
-        height: 300,
-        child: PageView.builder(
-          controller: _pageController,
-          itemCount: images.length,
-          onPageChanged: (index) {
-            setState(() {
-              _currentImageIndex = index;
-            });
-            _pageIndicatorController.forward(from: 0.0);
-          },
-          itemBuilder: (context, index) {
-            final imageUrl = images[index];
-            return GestureDetector(
-              onTap: () {
-                _galleryTransitionController.forward();
-                setState(() {
-                  _showFullScreenGallery = true;
-                  _currentImageIndex = index;
-                });
-              },
-              child: Hero(
-                tag: 'property_image_${property.id}_$index',
-                child: AnimatedBuilder(
-                  animation: _pageIndicatorController,
-                  builder: (context, child) {
-                    return Transform.scale(
-                      scale: Tween<double>(
-                        begin: 1.0,
-                        end: _currentImageIndex == index ? 1.0 : 0.9,
-                      )
-                          .animate(CurvedAnimation(
-                            parent: _pageIndicatorController,
-                            curve: Curves.easeOut,
-                          ))
-                          .value,
-                      child: child,
+    // Remove the outer Hero widget to avoid nested Hero widgets
+    return SizedBox(
+      height: 300,
+      child: PageView.builder(
+        controller: _pageController,
+        itemCount: images.length,
+        onPageChanged: (index) {
+          setState(() {
+            _currentImageIndex = index;
+          });
+          _pageIndicatorController.forward(from: 0.0);
+        },
+        itemBuilder: (context, index) {
+          final imageUrl = images[index];
+          return GestureDetector(
+            onTap: () {
+              _galleryTransitionController.forward();
+              setState(() {
+                _showFullScreenGallery = true;
+                _currentImageIndex = index;
+              });
+            },
+            // Use a unique tag for each image to avoid conflicts
+            child: Hero(
+              tag: 'detail_property_image_${property.id}_$index',
+              child: AnimatedBuilder(
+                animation: _pageIndicatorController,
+                builder: (context, child) {
+                  return Transform.scale(
+                    scale: Tween<double>(
+                      begin: 1.0,
+                      end: _currentImageIndex == index ? 1.0 : 0.9,
+                    )
+                        .animate(CurvedAnimation(
+                          parent: _pageIndicatorController,
+                          curve: Curves.easeOut,
+                        ))
+                        .value,
+                    child: child,
+                  );
+                },
+                child: Image.network(
+                  imageUrl,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    DebugLogger.error('Failed to load image: $imageUrl', error);
+                    return Container(
+                      color: Colors.grey.shade300,
+                      child: const Center(
+                          child: Icon(Icons.broken_image, size: 64)),
                     );
                   },
-                  child: Image.network(
-                    imageUrl,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      DebugLogger.error(
-                          'Failed to load image: $imageUrl', error);
-                      return Container(
-                        color: Colors.grey.shade300,
-                        child: const Center(
-                            child: Icon(Icons.broken_image, size: 64)),
-                      );
-                    },
-                    loadingBuilder: (context, child, loadingProgress) {
-                      if (loadingProgress == null) return child;
-                      return Center(
-                        child: CircularProgressIndicator(
-                          value: loadingProgress.expectedTotalBytes != null
-                              ? loadingProgress.cumulativeBytesLoaded /
-                                  loadingProgress.expectedTotalBytes!
-                              : null,
-                        ),
-                      );
-                    },
-                  ),
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return Center(
+                      child: CircularProgressIndicator(
+                        value: loadingProgress.expectedTotalBytes != null
+                            ? loadingProgress.cumulativeBytesLoaded /
+                                loadingProgress.expectedTotalBytes!
+                            : null,
+                      ),
+                    );
+                  },
                 ),
               ),
-            );
-          },
-        ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -917,8 +928,9 @@ class _PropertyDetailScreenState extends State<PropertyDetailScreen>
                 initialScale: PhotoViewComputedScale.contained,
                 minScale: PhotoViewComputedScale.contained * 0.8,
                 maxScale: PhotoViewComputedScale.covered * 2,
-                heroAttributes:
-                    PhotoViewHeroAttributes(tag: 'property_image_$index'),
+                // Update heroTag to match the detail screen
+                heroAttributes: PhotoViewHeroAttributes(
+                    tag: 'detail_property_image_${_property!.id}_$index'),
               );
             },
             itemCount: images.length,

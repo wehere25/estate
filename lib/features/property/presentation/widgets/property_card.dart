@@ -70,113 +70,115 @@ class PropertyCard extends StatelessWidget {
 
   Widget _buildGridItem(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    // Remove unused imageUrl variable
+
     return GestureDetector(
       onTap: onTap,
-      child: Hero(
-        tag: 'property_${property.id}',
-        child: Card(
-          elevation: 4,
-          margin: const EdgeInsets.all(8),
-          color: isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-            side: BorderSide(
-              color: isDarkMode ? Colors.white10 : Colors.transparent,
-              width: 1,
-            ),
+      // Remove the outer Hero to avoid nesting
+      child: Card(
+        elevation: 4,
+        margin: const EdgeInsets.all(8),
+        color: isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(
+            color: isDarkMode ? Colors.white10 : Colors.transparent,
+            width: 1,
           ),
-          child: Stack(
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Property Image
-                  Expanded(
-                    child: Hero(
-                      tag: 'property_image_${property.id}',
-                      child: ImageUtils.loadImage(
-                        url: property.images?.isNotEmpty == true
-                            ? property.images!.first
-                            : 'placeholder',
-                        fit: BoxFit.cover,
-                        width: double.infinity,
-                        height: isGridItem ? 140 : 180,
-                      ),
+        ),
+        child: Stack(
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Property Image with Hero
+                Expanded(
+                  child: Hero(
+                    // Use consistent tag format that won't conflict with detail screen
+                    tag: 'list_property_image_${property.id}_0',
+                    child: ImageUtils.loadImage(
+                      url: property.images?.isNotEmpty == true
+                          ? property.images!.first
+                          : 'placeholder',
+                      fit: BoxFit.cover,
+                      width: double.infinity,
+                      height: isGridItem ? 140 : 180,
                     ),
                   ),
-                  // Property Info
-                  Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                ),
+                // Property Info
+                Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Fix overflow by using FittedBox
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          FormattingUtils.formatIndianRupees(property.price),
+                          style: TextStyle(
+                            fontSize: isGridItem ? 16 : 18,
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        property.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: isDarkMode ? Colors.white : null,
+                            ),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
                         children: [
-                          Text(
-                            FormattingUtils.formatIndianRupees(property.price),
-                            style: TextStyle(
-                              fontSize: isGridItem ? 16 : 18,
-                              fontWeight: FontWeight.bold,
-                              color: Theme.of(context).colorScheme.primary,
+                          const Icon(Icons.location_on, size: 16),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              property.location ?? 'No Location',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(
+                                    color: isDarkMode
+                                        ? Colors.white70
+                                        : Colors.grey[600],
+                                  ),
                             ),
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            property.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodyMedium
-                                ?.copyWith(
-                                  color: isDarkMode ? Colors.white : null,
-                                ),
-                          ),
-                          const SizedBox(height: 4),
-                          Row(
-                            children: [
-                              const Icon(Icons.location_on, size: 16),
-                              const SizedBox(width: 4),
-                              Expanded(
-                                child: Text(
-                                  property.location ?? 'No Location',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .bodySmall
-                                      ?.copyWith(
-                                        color: isDarkMode
-                                            ? Colors.white70
-                                            : Colors.grey[600],
-                                      ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              _buildFeatureItem(context, Icons.king_bed,
-                                  '${property.bedrooms}'),
-                              _buildFeatureItem(context, Icons.bathtub,
-                                  '${property.bathrooms}'),
-                              _buildFeatureItem(context, Icons.square_foot,
-                                  '${property.area.toInt()}'),
-                            ],
-                          ),
-                        ]),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          _buildFeatureItem(
+                              context, Icons.king_bed, '${property.bedrooms}'),
+                          _buildFeatureItem(
+                              context, Icons.bathtub, '${property.bathrooms}'),
+                          _buildFeatureItem(context, Icons.square_foot,
+                              '${property.area.toInt()}'),
+                        ],
+                      ),
+                    ],
                   ),
-                ],
-              ),
-              // Fix FavoriteButton instantiation
-              Positioned(
-                top: 8,
-                right: 8,
-                child: FavoriteButton(property: property),
-              ),
-            ],
-          ),
+                ),
+              ],
+            ),
+            // Fix FavoriteButton instantiation
+            Positioned(
+              top: 8,
+              right: 8,
+              child: FavoriteButton(property: property),
+            ),
+          ],
         ),
       ),
     );
@@ -184,7 +186,7 @@ class PropertyCard extends StatelessWidget {
 
   Widget _buildListItem(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    // Remove unused imageUrl variable
+
     return GestureDetector(
       onTap: onTap,
       child: Card(
@@ -206,13 +208,17 @@ class PropertyCard extends StatelessWidget {
                 SizedBox(
                   width: 120,
                   height: 120,
-                  child: ImageUtils.loadImage(
-                    url: property.images?.isNotEmpty == true
-                        ? property.images!.first
-                        : 'placeholder',
-                    fit: BoxFit.cover,
-                    width: double.infinity,
-                    height: isGridItem ? 140 : 180,
+                  child: Hero(
+                    // Use consistent tag format that won't conflict
+                    tag: 'list_property_image_${property.id}_0',
+                    child: ImageUtils.loadImage(
+                      url: property.images?.isNotEmpty == true
+                          ? property.images!.first
+                          : 'placeholder',
+                      fit: BoxFit.cover,
+                      width: double.infinity,
+                      height: isGridItem ? 140 : 180,
+                    ),
                   ),
                 ),
                 // Property Info
@@ -254,25 +260,39 @@ class PropertyCard extends StatelessWidget {
                           ],
                         ),
                         const SizedBox(height: 8),
-                        Text(
-                          FormattingUtils.formatIndianRupees(property.price),
-                          style: TextStyle(
-                            fontSize: isGridItem ? 16 : 18,
-                            fontWeight: FontWeight.bold,
-                            color: Theme.of(context).colorScheme.primary,
+                        // Fix price overflow with FittedBox
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            FormattingUtils.formatIndianRupees(property.price),
+                            style: TextStyle(
+                              fontSize: isGridItem ? 16 : 18,
+                              fontWeight: FontWeight.bold,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
                           ),
                         ),
+                        // Fix feature item overflow with Expanded
                         const SizedBox(height: 8),
                         Row(
                           children: [
-                            _buildFeatureItem(context, Icons.king_bed,
-                                '${property.bedrooms}'),
-                            const SizedBox(width: 16),
-                            _buildFeatureItem(context, Icons.bathtub,
-                                '${property.bathrooms}'),
-                            const SizedBox(width: 16),
-                            _buildFeatureItem(context, Icons.square_foot,
-                                '${property.area.toInt()}'),
+                            Expanded(
+                              child: _buildFeatureItem(context, Icons.king_bed,
+                                  '${property.bedrooms}'),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _buildFeatureItem(context, Icons.bathtub,
+                                  '${property.bathrooms}'),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _buildFeatureItem(
+                                  context,
+                                  Icons.square_foot,
+                                  '${property.area.toInt()}'),
+                            ),
                           ],
                         ),
                       ],

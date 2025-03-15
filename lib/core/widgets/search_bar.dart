@@ -36,6 +36,7 @@ class CustomSearchBar extends StatelessWidget {
             child: Icon(
               Icons.search,
               color: isDarkMode ? Colors.white70 : Colors.grey[600],
+              size: 20, // Slightly smaller icon to prevent overflow
             ),
           ),
           Expanded(
@@ -50,16 +51,23 @@ class CustomSearchBar extends StatelessWidget {
                 hintText: 'Search properties...',
                 hintStyle: TextStyle(
                   color: isDarkMode ? Colors.white54 : Colors.grey[500],
+                  fontSize: 14, // Smaller font size to prevent overflow
                 ),
+                isDense: true, // More compact to prevent overflow
+                contentPadding: const EdgeInsets.symmetric(vertical: 12),
               ),
             ),
           ),
+          // Make sure the button doesn't cause overflow
           IconButton(
             icon: Icon(
               Icons.tune,
               color: isDarkMode ? Colors.white70 : Colors.grey[600],
+              size: 20, // Slightly smaller icon
             ),
+            constraints: const BoxConstraints(minWidth: 40),
             onPressed: onFilterTap,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
           ),
         ],
       ),
