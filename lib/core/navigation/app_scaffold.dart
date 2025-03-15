@@ -14,6 +14,7 @@ class AppScaffold extends StatelessWidget {
   final bool showAppBar;
   final bool showNavBar;
   final FloatingActionButton? floatingActionButton;
+  final Widget? leading; // Add leading parameter
 
   const AppScaffold({
     Key? key,
@@ -24,6 +25,7 @@ class AppScaffold extends StatelessWidget {
     this.showAppBar = true,
     this.showNavBar = true,
     this.floatingActionButton,
+    this.leading, // Add leading to constructor
   }) : super(key: key);
 
   @override
@@ -41,6 +43,7 @@ class AppScaffold extends StatelessWidget {
           ? AppBar(
               title: Text(title),
               actions: actions,
+              leading: leading, // Add leading to AppBar
             )
           : null,
       body: body,

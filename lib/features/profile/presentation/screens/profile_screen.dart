@@ -112,11 +112,8 @@ class _SettingsModalContentState extends State<_SettingsModalContent> {
             width: double.infinity,
             child: ElevatedButton(
               onPressed: _applyThemeChanges,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.lightColorScheme.primary,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-              ),
+              // Use the theme's button style directly instead of creating a custom one
+              // This ensures TextStyle interpolation works correctly
               child: const Text('Apply Theme'),
             ),
           ),

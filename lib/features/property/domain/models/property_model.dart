@@ -4,6 +4,47 @@ enum PropertyType { house, apartment, condo, townhouse, land, commercial }
 
 enum PropertyStatus { available, pending, sold, rented, unavailable }
 
+// Agent contact information class
+class AgentContact {
+  final String name;
+  final String phone;
+  final String? email;
+  final String? photoUrl;
+  final String? agency;
+  final String? website;
+
+  AgentContact({
+    required this.name,
+    required this.phone,
+    this.email,
+    this.photoUrl,
+    this.agency,
+    this.website,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'name': name,
+      'phone': phone,
+      'email': email,
+      'photoUrl': photoUrl,
+      'agency': agency,
+      'website': website,
+    };
+  }
+
+  factory AgentContact.fromMap(Map<String, dynamic> map) {
+    return AgentContact(
+      name: map['name'] ?? '',
+      phone: map['phone'] ?? '',
+      email: map['email'],
+      photoUrl: map['photoUrl'],
+      agency: map['agency'],
+      website: map['website'],
+    );
+  }
+}
+
 class PropertyOwner {
   final String uid;
   final String? name;
@@ -63,6 +104,7 @@ class PropertyModel {
   final String? reviewedBy; // Track which admin reviewed it
   final String? adminNotes; // Field for admin notes/comments
   final Map<String, dynamic>? moderationData; // Store moderation history/data
+  final AgentContact? agentContact; // Added agent contact field
 
   PropertyModel({
     this.id,
@@ -91,6 +133,7 @@ class PropertyModel {
     this.reviewedBy,
     this.adminNotes,
     this.moderationData,
+    this.agentContact, // Added parameter for agent contact
   });
 
   // Updated to support direct conversion from Firestore document
@@ -126,6 +169,9 @@ class PropertyModel {
       reviewedBy: data['reviewedBy'],
       adminNotes: data['adminNotes'],
       moderationData: data['moderationData'] as Map<String, dynamic>?,
+      agentContact: data['agentContact'] != null
+          ? AgentContact.fromMap(data['agentContact'])
+          : null,
     );
   }
 
@@ -182,6 +228,7 @@ class PropertyModel {
       'featured': featured,
       'amenities': amenities, // Add amenities to map
       'isApproved': isApproved, // Add isApproved to map
+      'agentContact': agentContact?.toMap(), // Add agent contact to map
     };
 
     // Only add admin fields if they are set
@@ -229,6 +276,7 @@ class PropertyModel {
     String? reviewedBy,
     String? adminNotes,
     Map<String, dynamic>? moderationData,
+    AgentContact? agentContact, // Added parameter for agent contact
   }) {
     return PropertyModel(
       id: id ?? this.id,
@@ -257,6 +305,8 @@ class PropertyModel {
       reviewedBy: reviewedBy ?? this.reviewedBy,
       adminNotes: adminNotes ?? this.adminNotes,
       moderationData: moderationData ?? this.moderationData,
+      agentContact:
+          agentContact ?? this.agentContact, // Add agent contact to copyWith
     );
   }
 

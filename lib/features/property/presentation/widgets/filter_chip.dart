@@ -1,12 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_styles.dart';
 
-enum FilterType {
-  propertyType,
-  price,
-  bedrooms,
-  location
-}
+enum FilterType { propertyType, price, bedrooms, location }
 
 class PropertyFilterChip extends StatelessWidget {
   final String label;
@@ -26,6 +21,8 @@ class PropertyFilterChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       child: FilterChip(
@@ -36,34 +33,38 @@ class PropertyFilterChip extends StatelessWidget {
               Icon(
                 icon,
                 size: 16,
-                color: isSelected ? Colors.white : Theme.of(context).colorScheme.primary,
+                color: isSelected
+                    ? Colors.white
+                    : (isDarkMode
+                        ? Colors.white70
+                        : Theme.of(context).colorScheme.primary),
               ),
               const SizedBox(width: 4),
             ],
             Text(
               label,
               style: TextStyle(
-                color: isSelected ? Colors.white : null,
+                color: isSelected
+                    ? Colors.white
+                    : (isDarkMode ? Colors.white70 : null),
               ),
             ),
           ],
         ),
         selected: isSelected,
         onSelected: (_) => onSelected(),
-        backgroundColor: Colors.transparent,
+        backgroundColor: isDarkMode ? const Color(0xFF2A2A2A) : Colors.white,
         selectedColor: Theme.of(context).colorScheme.primary,
+        checkmarkColor: Colors.white,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         shape: RoundedRectangleBorder(
-          borderRadius: AppStyles.borderRadiusM,
+          borderRadius: BorderRadius.circular(20),
           side: BorderSide(
-            color: isSelected 
-                ? Theme.of(context).colorScheme.primary 
-                : Theme.of(context).colorScheme.outline,
+            color: isSelected
+                ? Theme.of(context).colorScheme.primary
+                : (isDarkMode ? Colors.white24 : Colors.black12),
+            width: 1,
           ),
-        ),
-        showCheckmark: false,
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppStyles.paddingM,
-          vertical: AppStyles.paddingS,
         ),
       ),
     );

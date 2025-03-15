@@ -132,6 +132,7 @@ Future<void> main() async {
           create: (_) => StorageProvider(),
         ),
         Provider<NotificationService>.value(value: notificationService),
+        // FavoritesProvider is already provided above with proper dependencies
       ],
       child: const AppWithErrorBoundary(),
     ),
@@ -323,13 +324,7 @@ class MyApp extends StatelessWidget {
           ChangeNotifierProvider(create: (_) => ThemeProvider()),
           ChangeNotifierProvider(create: (_) => AuthProvider()),
           ChangeNotifierProvider(create: (_) => HomeProvider()),
-          // Add PropertyProvider to the MultiProvider with NotificationProvider
-          ChangeNotifierProvider<PropertyProvider>(
-              create: (_) => PropertyProvider(
-                    PropertyRepository(),
-                    Provider.of<notifications.NotificationProvider>(_,
-                        listen: false),
-                  )),
+          // FavoritesProvider is already registered in the main MultiProvider
           // Make sure to add NotificationProvider before PropertyProvider
           ChangeNotifierProvider(
               create: (_) => notifications.NotificationProvider(

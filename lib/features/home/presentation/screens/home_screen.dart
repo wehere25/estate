@@ -35,7 +35,7 @@ class _HomeScreenState extends State<HomeScreen>
   bool _isMapView = false;
   bool _isGridView = false;
   String _selectedFilter = 'All';
-  int _selectedIndex = 0;
+  final int _selectedIndex = 0;
   bool _isAdmin = false;
   final TextEditingController _searchController = TextEditingController();
   final MapController _mapController = MapController();
@@ -450,6 +450,7 @@ class _HomeScreenState extends State<HomeScreen>
         return PropertyCard(
           property: property,
           onTap: () => _navigateToPropertyDetail(property.id),
+          index: index, // Add index parameter
         );
       },
     );
@@ -473,6 +474,7 @@ class _HomeScreenState extends State<HomeScreen>
           property: property,
           isGridItem: true,
           onTap: () => _navigateToPropertyDetail(property.id),
+          index: index, // Add index parameter
         );
       },
     );

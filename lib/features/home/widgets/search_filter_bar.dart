@@ -22,8 +22,7 @@ class SearchFilterBar extends StatelessWidget {
     return Container(
       height: 54,
       decoration: BoxDecoration(
-        color:
-            Colors.white, // Always white in header for contrast with gradient
+        color: isDarkMode ? theme.colorScheme.surface : Colors.white,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
@@ -40,7 +39,9 @@ class SearchFilterBar extends StatelessWidget {
             padding: const EdgeInsets.only(left: 15),
             child: Icon(
               Icons.search_rounded,
-              color: AppColors.grayColor,
+              color: isDarkMode
+                  ? theme.colorScheme.onSurface
+                  : AppColors.grayColor,
               size: 24,
             ),
           ),
@@ -55,13 +56,16 @@ class SearchFilterBar extends StatelessWidget {
                 contentPadding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
                 hintStyle: TextStyle(
-                  color: AppColors.grayColor,
+                  color: isDarkMode
+                      ? theme.colorScheme.onSurface.withOpacity(0.7)
+                      : AppColors.grayColor,
                   fontSize: 16,
                 ),
               ),
               style: TextStyle(
                 fontSize: 16,
-                color: isDarkMode ? Colors.black87 : Colors.black87,
+                color:
+                    isDarkMode ? theme.colorScheme.onSurface : Colors.black87,
               ),
               textInputAction: TextInputAction.search,
               onSubmitted: (value) {
@@ -88,7 +92,9 @@ class SearchFilterBar extends StatelessWidget {
                 height: 54,
                 child: Icon(
                   Icons.tune, // Filter icon matching HTML
-                  color: AppColors.grayColor,
+                  color: isDarkMode
+                      ? theme.colorScheme.onSurface
+                      : AppColors.grayColor,
                   size: 24,
                 ),
               ),
