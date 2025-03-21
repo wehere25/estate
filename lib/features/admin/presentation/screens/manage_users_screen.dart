@@ -4,6 +4,7 @@ import '../providers/admin_provider.dart';
 import '../widgets/user_data_table.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../shared/widgets/app_text_field.dart';
+import '../../domain/models/admin_user.dart';
 
 class ManageUsersScreen extends StatefulWidget {
   const ManageUsersScreen({Key? key}) : super(key: key);
@@ -15,6 +16,17 @@ class ManageUsersScreen extends StatefulWidget {
 class _ManageUsersScreenState extends State<ManageUsersScreen> {
   final TextEditingController _searchController = TextEditingController();
   bool _isLoading = false;
+
+  // Add these variables for filtering
+  String _selectedFilter = 'All Users';
+  final List<String> _filterOptions = [
+    'All Users',
+    'Admins',
+    'Regular Users',
+    'Active',
+    'Disabled',
+    'New (7 days)'
+  ];
 
   @override
   void initState() {
@@ -77,13 +89,10 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
   Widget _buildContent() {
     return Consumer<AdminProvider>(
       builder: (context, provider, child) {
-        final filteredUsers = _searchController.text.isEmpty
-            ? provider.users
-            : provider.users.where((user) {
-                final query = _searchController.text.toLowerCase();
-                return user.displayName.toLowerCase().contains(query) ||
-                    user.email.toLowerCase().contains(query);
-              }).toList();
+        final allUsers = provider.users;
+
+        // Apply filters to users
+        final filteredUsers = _filterUsers(allUsers);
 
         return Column(
           children: [
@@ -103,16 +112,20 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
                                 size: 64, color: Colors.grey),
                             const SizedBox(height: 16),
                             Text(
-                              'No users match "${_searchController.text}"',
+                              _searchController.text.isNotEmpty
+                                  ? 'No users match "${_searchController.text}"'
+                                  : 'No users match the selected filter',
                               style: const TextStyle(fontSize: 16),
                             ),
                             const SizedBox(height: 8),
                             TextButton(
                               onPressed: () {
-                                _searchController.clear();
-                                setState(() {});
+                                setState(() {
+                                  _searchController.clear();
+                                  _selectedFilter = 'All Users';
+                                });
                               },
-                              child: const Text('Clear search'),
+                              child: const Text('Clear filters'),
                             ),
                           ],
                         ),
@@ -145,6 +158,50 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
     );
   }
 
+  // New method to filter users based on search query and selected filter
+  List<AdminUser> _filterUsers(List<AdminUser> users) {
+    // First apply search text filter
+    var result = _searchController.text.isEmpty
+        ? users
+        : users.where((user) {
+            final query = _searchController.text.toLowerCase();
+            return user.displayName.toLowerCase().contains(query) ||
+                user.email.toLowerCase().contains(query);
+          }).toList();
+
+    // Then apply the selected category filter
+    switch (_selectedFilter) {
+      case 'Admins':
+        result = result.where((user) => user.isAdmin).toList();
+        break;
+      case 'Regular Users':
+        result = result.where((user) => !user.isAdmin).toList();
+        break;
+      case 'Active':
+        result = result.where((user) => user.status == 'active').toList();
+        break;
+      case 'Disabled':
+        result = result
+            .where(
+                (user) => user.status == 'disabled' || user.status == 'blocked')
+            .toList();
+        break;
+      case 'New (7 days)':
+        final sevenDaysAgo = DateTime.now().subtract(const Duration(days: 7));
+        result = result.where((user) {
+          if (user.createdAt == null) return false;
+          return user.createdAt!.toDate().isAfter(sevenDaysAgo);
+        }).toList();
+        break;
+      case 'All Users':
+      default:
+        // No additional filtering needed
+        break;
+    }
+
+    return result;
+  }
+
   Widget _buildSearchAndFilters() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -169,14 +226,10 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
           height: 40,
           child: ListView(
             scrollDirection: Axis.horizontal,
-            children: [
-              _buildFilterChip('All Users', true),
-              _buildFilterChip('Admins', false),
-              _buildFilterChip('Regular Users', false),
-              _buildFilterChip('Active', false),
-              _buildFilterChip('Disabled', false),
-              _buildFilterChip('New (7 days)', false),
-            ],
+            children: _filterOptions
+                .map((filter) =>
+                    _buildFilterChip(filter, filter == _selectedFilter))
+                .toList(),
           ),
         ),
       ],
@@ -190,7 +243,9 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
         label: Text(label),
         selected: selected,
         onSelected: (_) {
-          // Filter logic would be implemented here
+          setState(() {
+            _selectedFilter = label;
+          });
         },
         selectedColor: AppColors.lightColorScheme.primary.withOpacity(0.2),
         showCheckmark: true,

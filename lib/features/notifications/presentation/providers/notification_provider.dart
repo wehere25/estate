@@ -45,6 +45,13 @@ class NotificationProvider with ChangeNotifier {
     bool sendToAllUsers = false,
   }) async {
     try {
+      // Add debugging information
+      DevUtils.log('🔔 Creating property notification:');
+      DevUtils.log('📬 Property ID: ${property.id}');
+      DevUtils.log('📬 Title: ${property.title}');
+      DevUtils.log('📬 Type: $type');
+      DevUtils.log('📬 Send to all users: $sendToAllUsers');
+
       String title;
       String message;
 
@@ -55,6 +62,9 @@ class NotificationProvider with ChangeNotifier {
 
         if (sendToAllUsers) {
           // For new properties, send to all users
+          DevUtils.log(
+              '📬 Sending notification to ALL USERS for property: ${property.title}');
+
           await _service.sendNotificationToAllUsers(
             title: title,
             message: message,
@@ -69,6 +79,8 @@ class NotificationProvider with ChangeNotifier {
                   : null,
             },
           );
+
+          DevUtils.log('📬 Successfully sent notification to all users');
         }
       } else {
         // For other notifications (price change, status change), send only to property owner

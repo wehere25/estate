@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:firebase_auth/firebase_auth.dart'
     hide AuthProvider; // Hide Firebase's AuthProvider
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shimmer/shimmer.dart';
 import '/core/constants/app_colors.dart';
 import '/core/utils/snackbar_utils.dart';
 import '/features/favorites/providers/favorites_provider.dart';
@@ -15,6 +16,9 @@ import '/core/services/global_auth_service.dart' show GlobalAuthService;
 import '../../../../features/auth/domain/providers/auth_provider.dart';
 import '../../../../features/auth/domain/services/admin_service.dart';
 import './about_developer_screen.dart'; // Import the AboutDeveloperScreen
+import '/features/property/domain/models/property_model.dart';
+import '/features/property/domain/services/property_service.dart';
+import '/features/property/presentation/providers/property_provider.dart';
 
 class ProfileScreen extends StatelessWidget {
   final bool showNavBar;
@@ -1008,94 +1012,589 @@ class _ProfileScreenContentState extends State<_ProfileScreenContent> {
       return;
     }
 
-    // Here you would navigate to a list screen showing the recently viewed properties
-    // For now, just show a temporary dialog
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Recently Viewed'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: ListView.builder(
-            shrinkWrap: true,
-            itemCount: recentlyViewed.length,
-            itemBuilder: (context, index) {
-              return ListTile(
-                title: Text('Property ${index + 1}'),
-                subtitle: Text('ID: ${recentlyViewed[index]}'),
-                onTap: () {
-                  Navigator.pop(context);
-                  context.push('/propertyDetail', extra: recentlyViewed[index]);
-                },
-              );
-            },
+    // Cache for fast loading on subsequent views
+    Map<String, PropertyModel?> _propertyCache = {};
+
+    // Pre-fetch property data before navigating
+    _prefetchRecentlyViewedProperties(recentlyViewed).then((_) {
+      // Create a more robust screen for recently viewed properties
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => Consumer<PropertyProvider>(
+            builder: (context, propertyProvider, _) => WillPopScope(
+              onWillPop: () async {
+                debugPrint('RecentlyViewed: Back button pressed');
+                return true;
+              },
+              child: Scaffold(
+                backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+                appBar: AppBar(
+                  title: const Text('Recently Viewed'),
+                  elevation: 0,
+                  backgroundColor: Colors.transparent,
+                  leading: BackButton(
+                    onPressed: () {
+                      debugPrint('RecentlyViewed: Back button tapped');
+                      Navigator.of(context).pop();
+                    },
+                  ),
+                ),
+                body: FutureBuilder<List<PropertyModel?>>(
+                  future: _getRecentlyViewedPropertiesOptimized(
+                      recentlyViewed, propertyProvider),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      // Show shimmer loading effect instead of spinner
+                      return _buildLoadingShimmer();
+                    } else if (snapshot.hasError) {
+                      debugPrint(
+                          'Error loading recently viewed: ${snapshot.error}');
+                      return Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.error_outline,
+                                size: 48, color: Colors.red),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Unable to load properties',
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Please try again later',
+                              style: TextStyle(color: Colors.grey[600]),
+                            ),
+                            const SizedBox(height: 24),
+                            ElevatedButton.icon(
+                              onPressed: () => Navigator.pop(context),
+                              icon: const Icon(Icons.arrow_back),
+                              label: const Text('Go Back'),
+                            ),
+                          ],
+                        ),
+                      );
+                    } else {
+                      // Filter out null properties and clean up stale IDs
+                      final validProperties =
+                          snapshot.data?.where((p) => p != null).toList() ?? [];
+                      final deletedCount =
+                          recentlyViewed.length - validProperties.length;
+
+                      // If we have valid properties but fewer than we tried to load,
+                      // update the SharedPreferences with only valid IDs
+                      if (validProperties.isNotEmpty && deletedCount > 0) {
+                        _cleanUpStalePropertyIds(
+                            validProperties.map((p) => p!.id!).toList());
+                      }
+
+                      if (validProperties.isEmpty) {
+                        return Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.home_outlined,
+                                  size: 64, color: Colors.grey[400]),
+                              const SizedBox(height: 16),
+                              Text(
+                                'No properties found',
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Your recently viewed properties may have been removed',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: Colors.grey[600]),
+                              ),
+                              const SizedBox(height: 24),
+                              ElevatedButton.icon(
+                                onPressed: () {
+                                  // Clear the stale property IDs
+                                  _prefs.setStringList(
+                                      'recently_viewed_properties', []);
+                                  Navigator.pop(context);
+                                },
+                                icon: const Icon(Icons.refresh),
+                                label: const Text('Clear & Go Back'),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'You recently viewed ${validProperties.length} properties',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                                if (deletedCount > 0)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 4.0),
+                                    child: Text(
+                                      '$deletedCount properties have been removed',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: Colors.red[300],
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          Expanded(
+                            child: GridView.builder(
+                              padding: const EdgeInsets.all(16),
+                              gridDelegate:
+                                  const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 2,
+                                childAspectRatio: 0.75,
+                                crossAxisSpacing: 16,
+                                mainAxisSpacing: 16,
+                              ),
+                              itemCount: recentlyViewed.length,
+                              itemBuilder: (context, index) {
+                                // Find the property in valid properties
+                                final String currentId = recentlyViewed[index];
+                                final property = validProperties.firstWhere(
+                                    (p) => p!.id == currentId,
+                                    orElse: () => null);
+
+                                // Handle deleted property
+                                if (property == null) {
+                                  return Card(
+                                    elevation: 2,
+                                    clipBehavior: Clip.antiAlias,
+                                    color: Colors.grey[200],
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(12.0),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          const Icon(
+                                            Icons.error_outline,
+                                            color: Colors.red,
+                                            size: 36,
+                                          ),
+                                          const SizedBox(height: 12),
+                                          const Text(
+                                            'Property Unavailable',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 8),
+                                          Text(
+                                            'ID: ${currentId.substring(0, currentId.length > 8 ? 8 : currentId.length)}...',
+                                            style: TextStyle(
+                                                color: Colors.grey[700],
+                                                fontSize: 11),
+                                          ),
+                                          const SizedBox(height: 16),
+                                          TextButton.icon(
+                                            onPressed: () {
+                                              // Remove this ID from recently viewed
+                                              List<String> updatedList =
+                                                  List.from(recentlyViewed);
+                                              updatedList.remove(currentId);
+                                              _prefs.setStringList(
+                                                  'recently_viewed_properties',
+                                                  updatedList);
+
+                                              // Refresh the screen
+                                              Navigator.pop(context);
+                                              _navigateToRecentlyViewed();
+                                            },
+                                            icon: const Icon(
+                                                Icons.delete_outline,
+                                                size: 14),
+                                            label: const Text('Remove',
+                                                style: TextStyle(fontSize: 12)),
+                                            style: TextButton.styleFrom(
+                                              foregroundColor: Colors.red[400],
+                                              padding: EdgeInsets.zero,
+                                              minimumSize: Size.zero,
+                                              tapTargetSize:
+                                                  MaterialTapTargetSize
+                                                      .shrinkWrap,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                }
+
+                                // Regular property card for valid properties
+                                return Card(
+                                  elevation: 3,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  clipBehavior: Clip.antiAlias,
+                                  child: InkWell(
+                                    onTap: () {
+                                      if (property.id != null) {
+                                        // Corrected navigation - using /property/:id URL format
+                                        Navigator.pop(context);
+                                        context
+                                            .push('/property/${property.id}');
+                                      }
+                                    },
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Stack(
+                                          children: [
+                                            // Property image
+                                            SizedBox(
+                                              height: 120,
+                                              width: double.infinity,
+                                              child: property.images != null &&
+                                                      property
+                                                          .images!.isNotEmpty
+                                                  ? Image.network(
+                                                      property.images!.first,
+                                                      fit: BoxFit.cover,
+                                                      errorBuilder: (context,
+                                                          error, stackTrace) {
+                                                        return Container(
+                                                          color:
+                                                              Colors.grey[300],
+                                                          child: const Center(
+                                                            child: Icon(
+                                                                Icons
+                                                                    .image_not_supported,
+                                                                size: 30),
+                                                          ),
+                                                        );
+                                                      },
+                                                    )
+                                                  : Container(
+                                                      color: Colors.grey[300],
+                                                      child: const Center(
+                                                        child: Icon(Icons.home,
+                                                            size: 30),
+                                                      ),
+                                                    ),
+                                            ),
+                                            // Price tag
+                                            Positioned(
+                                              bottom: 0,
+                                              right: 0,
+                                              child: Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                        horizontal: 8,
+                                                        vertical: 4),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.black
+                                                      .withOpacity(0.7),
+                                                  borderRadius:
+                                                      const BorderRadius.only(
+                                                    topLeft: Radius.circular(8),
+                                                  ),
+                                                ),
+                                                child: Text(
+                                                  '\$${property.price.toStringAsFixed(0)}',
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 12,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                            // Sale/Rent badge
+                                            Positioned(
+                                              top: 0,
+                                              left: 0,
+                                              child: Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                        horizontal: 8,
+                                                        vertical: 4),
+                                                decoration: BoxDecoration(
+                                                  color: property.listingType
+                                                              ?.toLowerCase() ==
+                                                          'rent'
+                                                      ? Colors.blue
+                                                      : Colors.green,
+                                                  borderRadius:
+                                                      const BorderRadius.only(
+                                                    bottomRight:
+                                                        Radius.circular(8),
+                                                  ),
+                                                ),
+                                                child: Text(
+                                                  property.listingType
+                                                              ?.toLowerCase() ==
+                                                          'rent'
+                                                      ? 'RENT'
+                                                      : 'SALE',
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 10,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        Padding(
+                                          padding: const EdgeInsets.all(8.0),
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                property.title,
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 14,
+                                                ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Row(
+                                                children: [
+                                                  const Icon(Icons.location_on,
+                                                      size: 12,
+                                                      color: Colors.grey),
+                                                  const SizedBox(width: 2),
+                                                  Expanded(
+                                                    child: Text(
+                                                      property.location ??
+                                                          'No location',
+                                                      style: TextStyle(
+                                                        color: Colors.grey[600],
+                                                        fontSize: 12,
+                                                      ),
+                                                      maxLines: 1,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                              const SizedBox(height: 8),
+                                              // Property features
+                                              Row(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment
+                                                        .spaceEvenly,
+                                                children: [
+                                                  _buildCompactFeature(
+                                                      Icons.king_bed_outlined,
+                                                      '${property.bedrooms}'),
+                                                  _buildCompactFeature(
+                                                      Icons.bathtub_outlined,
+                                                      '${property.bathrooms}'),
+                                                  _buildCompactFeature(
+                                                      Icons.square_foot,
+                                                      '${property.area}'),
+                                                ],
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      );
+                    }
+                  },
+                ),
+              ),
+            ),
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
+      );
+    });
+  }
+
+  // Build shimmer loading effect for better UX
+  Widget _buildLoadingShimmer() {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Shimmer.fromColors(
+        baseColor: Colors.grey[300]!,
+        highlightColor: Colors.grey[100]!,
+        child: GridView.builder(
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            childAspectRatio: 0.75,
+            crossAxisSpacing: 16,
+            mainAxisSpacing: 16,
           ),
-        ],
+          itemCount: 6, // Show 6 placeholder items
+          itemBuilder: (_, __) => Card(
+            elevation: 1.0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  height: 120.0,
+                  color: Colors.white,
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: double.infinity,
+                        height: 12.0,
+                        color: Colors.white,
+                      ),
+                      const SizedBox(height: 8.0),
+                      Container(
+                        width: 120.0,
+                        height: 10.0,
+                        color: Colors.white,
+                      ),
+                      const SizedBox(height: 12.0),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: List.generate(
+                          3,
+                          (_) => Container(
+                            width: 24.0,
+                            height: 10.0,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
+  }
+
+  // Prefetch properties to speed up loading (runs before navigating)
+  Future<void> _prefetchRecentlyViewedProperties(
+      List<String> propertyIds) async {
+    // Only prefetch the first few properties to speed up initial loading
+    final initialBatchIds = propertyIds.take(4).toList();
+    try {
+      final propertyProvider =
+          Provider.of<PropertyProvider>(context, listen: false);
+
+      // Start prefetching in background
+      for (final id in initialBatchIds) {
+        propertyProvider.prefetchProperty(
+            id); // This method will be added to PropertyProvider
+      }
+    } catch (e) {
+      debugPrint('Error prefetching properties: $e');
+    }
+  }
+
+  // Optimized method to get recently viewed properties
+  Future<List<PropertyModel?>> _getRecentlyViewedPropertiesOptimized(
+      List<String> propertyIds, PropertyProvider propertyProvider) async {
+    debugPrint('Getting optimized recently viewed properties');
+
+    List<PropertyModel?> properties = [];
+    final PropertyService propertyService = PropertyService();
+
+    // Process in batches to improve performance
+    final batches = _createBatches(propertyIds, 4);
+
+    for (final batch in batches) {
+      final futures = batch.map((id) async {
+        try {
+          // First check if property is already loaded in the provider
+          PropertyModel? property = propertyProvider.getPropertyById(id);
+
+          // If not found in provider, fetch using service
+          if (property == null) {
+            property = await propertyService.getPropertyById(id);
+          }
+
+          return property;
+        } catch (e) {
+          debugPrint('Error fetching property $id: $e');
+          return null;
+        }
+      }).toList();
+
+      // Wait for all properties in this batch to load
+      final batchResults = await Future.wait(futures);
+      properties.addAll(batchResults);
+    }
+
+    return properties;
+  }
+
+  // Helper to create batches for processing
+  List<List<String>> _createBatches(List<String> items, int batchSize) {
+    List<List<String>> batches = [];
+    for (var i = 0; i < items.length; i += batchSize) {
+      final end = (i + batchSize < items.length) ? i + batchSize : items.length;
+      batches.add(items.sublist(i, end));
+    }
+    return batches;
+  }
+
+  // Helper widget for compact property features display
+  Widget _buildCompactFeature(IconData icon, String value) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 12, color: Colors.grey[700]),
+        const SizedBox(width: 2),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 11,
+            color: Colors.grey[800],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Helper method to clean up stale property IDs in SharedPreferences
+  void _cleanUpStalePropertyIds(List<String> validIds) {
+    final recentlyViewed =
+        _prefs.getStringList('recently_viewed_properties') ?? [];
+    // Don't remove IDs completely, keep them but mark them as unavailable
+    _prefs.setStringList('recently_viewed_properties', recentlyViewed);
   }
 
   // Saved searches screen navigation
   void _navigateToSavedSearches() {
     debugPrint('ProfileScreen: Navigating to Saved Searches');
-
-    final savedSearches = _prefs.getStringList('saved_searches') ?? [];
-
-    if (savedSearches.isEmpty) {
-      SnackBarUtils.showInfoSnackBar(context, 'You have no saved searches');
-      return;
-    }
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Saved Searches'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: ListView.builder(
-            shrinkWrap: true,
-            itemCount: savedSearches.length,
-            itemBuilder: (context, index) {
-              return ListTile(
-                title: Text('Search ${index + 1}'),
-                subtitle: Text(savedSearches[index]),
-                trailing: IconButton(
-                  icon: const Icon(Icons.delete),
-                  onPressed: () {
-                    // Remove this search
-                    savedSearches.removeAt(index);
-                    _prefs.setStringList('saved_searches', savedSearches);
-
-                    Navigator.pop(context);
-                    SnackBarUtils.showSuccessSnackBar(
-                        context, 'Search removed successfully');
-
-                    // Re-open dialog with updated list
-                    _navigateToSavedSearches();
-                  },
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  context.push('/search', extra: savedSearches[index]);
-                },
-              );
-            },
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
+    context.push('/saved_searches');
   }
 
   // My properties screen navigation

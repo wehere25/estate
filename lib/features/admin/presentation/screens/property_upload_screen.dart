@@ -6,6 +6,7 @@ import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:path/path.dart' as path;
 import 'package:go_router/go_router.dart';
+import '../../../../core/navigation/back_button_handler.dart';
 
 // App imports
 import '/core/utils/snackbar_utils.dart';
@@ -387,7 +388,6 @@ class _PropertyUploadScreenState extends State<PropertyUploadScreen>
           _clearForm();
         }
 
-        // Use GoRouter for navigation to avoid Navigator conflicts
         // Safe navigation that works with both GoRouter and Navigator scenarios
         if (widget.showNavBar) {
           // If shown with navbar, go back to home
@@ -396,8 +396,14 @@ class _PropertyUploadScreenState extends State<PropertyUploadScreen>
           }
         } else {
           // If shown without navbar (e.g. in a sub-route), just pop back
-          if (mounted && Navigator.canPop(context)) {
-            Navigator.pop(context);
+          if (mounted) {
+            try {
+              // Try to pop back
+              context.pop();
+            } catch (e) {
+              // If there's nothing to pop, go to home
+              context.go('/home');
+            }
           }
         }
       }
@@ -494,27 +500,20 @@ class _PropertyUploadScreenState extends State<PropertyUploadScreen>
 
   @override
   Widget build(BuildContext context) {
-    return PopScope(
-      // Replace WillPopScope with PopScope
-      canPop: false,
-      onPopInvoked: (bool didPop) async {
-        if (didPop) return;
-
-        final shouldPop = await _onWillPop();
-        if (shouldPop && context.mounted) {
-          Navigator.of(context).pop();
-        }
-      },
+    return BackButtonHandler(
+      screenName: 'PropertyUploadScreen',
+      onWillPop: _onWillPop,
       child: AppScaffold(
         currentIndex: 2,
         title: widget.propertyToEdit != null ? 'Edit Property' : 'Add Property',
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () async {
-            if (await _onWillPop()) {
-              if (context.mounted) {
-                Navigator.of(context).pop();
-              }
+            // Let the BackButtonHandler handle this
+            if (Navigator.canPop(context)) {
+              Navigator.pop(context);
+            } else {
+              context.go('/home');
             }
           },
         ),

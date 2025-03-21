@@ -6,14 +6,17 @@ import 'package:photo_view/photo_view_gallery.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/utils/debug_logger.dart';
 import '../../../../core/utils/dev_utils.dart';
 import '../../../../core/utils/snackbar_utils.dart';
+import '../../../../core/navigation/back_button_handler.dart';
 import '../../domain/models/property_model.dart';
 import '../../domain/services/property_service.dart';
+import '../providers/property_provider.dart';
 import '../../../../core/utils/formatting_utils.dart';
-import '../providers/favorites_provider.dart';
+import '../../../favorites/providers/favorites_provider.dart';
 
 class PropertyDetailScreen extends StatefulWidget {
   final String propertyId;
@@ -29,8 +32,8 @@ class PropertyDetailScreen extends StatefulWidget {
 
 class _PropertyDetailScreenState extends State<PropertyDetailScreen>
     with TickerProviderStateMixin {
-  PropertyModel? _property;
   bool _isLoading = true;
+  PropertyModel? _property;
   String? _error;
   final PropertyService _propertyService = PropertyService();
   late SharedPreferences _prefs;
@@ -53,6 +56,8 @@ class _PropertyDetailScreenState extends State<PropertyDetailScreen>
       vsync: this,
     );
     _initializePrefs();
+    DebugLogger.info(
+        'PropertyDetailScreen: initialized for ${widget.propertyId}');
   }
 
   @override
@@ -67,6 +72,32 @@ class _PropertyDetailScreenState extends State<PropertyDetailScreen>
     _prefs = await SharedPreferences.getInstance();
     _loadProperty();
     _checkIfFavorite();
+
+    // Add to recently viewed properties
+    _addToRecentlyViewed();
+  }
+
+  // Add this property to recently viewed list
+  Future<void> _addToRecentlyViewed() async {
+    try {
+      final recentlyViewed =
+          _prefs.getStringList('recently_viewed_properties') ?? [];
+
+      // Remove this property ID if it exists (to avoid duplicates)
+      recentlyViewed.remove(widget.propertyId);
+
+      // Add to the beginning of the list
+      recentlyViewed.insert(0, widget.propertyId);
+
+      // Keep only the most recent 20 properties
+      final updatedList = recentlyViewed.take(20).toList();
+
+      await _prefs.setStringList('recently_viewed_properties', updatedList);
+      DebugLogger.info(
+          'Added property ${widget.propertyId} to recently viewed');
+    } catch (e) {
+      DebugLogger.error('Error adding to recently viewed', e);
+    }
   }
 
   // Check if this property is in favorites
@@ -86,7 +117,52 @@ class _PropertyDetailScreenState extends State<PropertyDetailScreen>
           _isFavorite = false;
         });
       }
-      debugPrint('FavoritesProvider not available: $e');
+      DebugLogger.error('FavoritesProvider not available', e);
+    }
+  }
+
+  // Load property with priority to provider cache
+  Future<void> _loadProperty() async {
+    if (!mounted) return;
+
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      // Try to get property from provider first (faster)
+      PropertyModel? property;
+
+      try {
+        final propertyProvider =
+            Provider.of<PropertyProvider>(context, listen: false);
+        property = propertyProvider.getPropertyById(widget.propertyId);
+      } catch (e) {
+        DebugLogger.error('PropertyProvider not available', e);
+      }
+
+      // If not found in provider, fetch directly
+      if (property == null) {
+        property = await _propertyService.getPropertyById(widget.propertyId);
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        _property = property;
+        _isLoading = false;
+        _error = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _error = 'Failed to load property details: ${e.toString()}';
+        _isLoading = false;
+      });
+
+      DebugLogger.error('Error loading property', e);
     }
   }
 
@@ -94,60 +170,43 @@ class _PropertyDetailScreenState extends State<PropertyDetailScreen>
   Future<void> _toggleFavorite() async {
     if (_property == null) return;
 
-    try {
-      final favoritesProvider =
-          Provider.of<FavoritesProvider>(context, listen: false);
+    final favoritesProvider =
+        Provider.of<FavoritesProvider>(context, listen: false);
 
-      if (_isFavorite) {
-        await favoritesProvider.removeFromFavorites(widget.propertyId);
-        if (mounted) {
-          SnackBarUtils.showInfoSnackBar(context, 'Removed from favorites');
-        }
-      } else {
-        await favoritesProvider.addToFavorites(_property!);
-        if (mounted) {
-          SnackBarUtils.showSuccessSnackBar(context, 'Added to favorites');
-        }
-      }
+    // Use the correct method from FavoritesProvider
+    try {
+      await favoritesProvider.toggleFavorite(_property!);
 
       if (mounted) {
         setState(() {
-          _isFavorite = !_isFavorite;
+          _isFavorite = favoritesProvider.isFavorite(widget.propertyId);
         });
+
+        if (_isFavorite) {
+          SnackBarUtils.showSuccessSnackBar(context, 'Added to favorites');
+        } else {
+          SnackBarUtils.showInfoSnackBar(context, 'Removed from favorites');
+        }
       }
     } catch (e) {
-      // Handle case when provider is not available
       if (mounted) {
-        SnackBarUtils.showErrorSnackBar(
-            context, 'Error updating favorites. Please try again later.');
+        SnackBarUtils.showErrorSnackBar(context, 'Failed to update favorites');
       }
-      debugPrint('Error toggling favorite: $e');
+      DebugLogger.error('Error toggling favorite status', e);
     }
   }
 
   // Share property
-  Future<void> _shareProperty() async {
+  void _shareProperty() {
     if (_property == null) return;
 
-    final String propertyName = _property!.title;
-    final String price = FormattingUtils.formatIndianRupees(_property!.price);
-    final String location = _property!.location ?? 'Location not specified';
+    final String shareText = 'Check out this property: ${_property!.title}\n'
+        'Price: \$${_property!.price}\n'
+        'Location: ${_property!.location ?? 'Not specified'}\n'
+        'Details: ${_property!.bedrooms} bed, ${_property!.bathrooms} bath, ${_property!.area} sqft\n'
+        'View it in our app!';
 
-    // Create share text
-    final String shareText = 'Check out this property: $propertyName\n'
-        'Price: $price\n'
-        'Location: $location\n'
-        '${_property!.bedrooms} beds, ${_property!.bathrooms} baths, ${_property!.area} sq.ft.\n\n'
-        'View more details in the app!';
-
-    try {
-      await Share.share(shareText, subject: 'Property Details: $propertyName');
-    } catch (e) {
-      if (mounted) {
-        SnackBarUtils.showErrorSnackBar(
-            context, 'Could not share property: $e');
-      }
-    }
+    Share.share(shareText);
   }
 
   // Contact agent
@@ -300,198 +359,68 @@ class _PropertyDetailScreenState extends State<PropertyDetailScreen>
     }
   }
 
-  Future<void> _addToRecentlyViewed(String propertyId) async {
-    final recentlyViewed =
-        _prefs.getStringList('recently_viewed_properties') ?? [];
-
-    // Remove if already exists to avoid duplicates
-    recentlyViewed.remove(propertyId);
-
-    // Add to the beginning of the list
-    recentlyViewed.insert(0, propertyId);
-
-    // Keep only the last 10 items
-    if (recentlyViewed.length > 10) {
-      recentlyViewed.removeLast();
-    }
-
-    await _prefs.setStringList('recently_viewed_properties', recentlyViewed);
-  }
-
-  Future<void> _loadProperty() async {
-    try {
-      setState(() {
-        _isLoading = true;
-        _error = null;
-      });
-
-      // Try to load the property
-      final property =
-          await _propertyService.getPropertyById(widget.propertyId);
-
-      if (mounted) {
-        setState(() {
-          _property = property;
-          _isLoading = false;
-        });
-
-        // Add to recently viewed after successful load
-        await _addToRecentlyViewed(widget.propertyId);
-      }
-    } catch (e) {
-      DevUtils.log('Error loading property: $e');
-      if (mounted) {
-        setState(() {
-          _error = 'Failed to load property details';
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: _showFullScreenGallery && _property != null
-          ? _buildFullscreenGallery()
-          : _buildPropertyScaffold(),
-    );
-  }
-
-  Widget _buildPropertyScaffold() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return Scaffold(
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.share),
-            onPressed: _shareProperty,
+    // Wrap the entire screen with BackButtonHandler for consistent back handling
+    return BackButtonHandler(
+      screenName: 'PropertyDetailScreen-${widget.propertyId}',
+      onWillPop: () async {
+        // Hide gallery if showing before popping the screen
+        if (_showFullScreenGallery) {
+          setState(() {
+            _showFullScreenGallery = false;
+          });
+          return false; // Don't pop yet, just close gallery
+        }
+        DebugLogger.info('PropertyDetailScreen: Back button pressed, will pop');
+        return true; // Allow regular pop
+      },
+      child: Scaffold(
+        extendBodyBehindAppBar: true,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        appBar: AppBar(
+          elevation: 0,
+          backgroundColor: Colors.transparent,
+          leading: BackButton(
+            onPressed: () {
+              DebugLogger.info('PropertyDetailScreen: Back button tapped');
+              if (_showFullScreenGallery) {
+                setState(() {
+                  _showFullScreenGallery = false;
+                });
+              } else if (Navigator.canPop(context)) {
+                Navigator.pop(context);
+              } else {
+                context.go('/home');
+              }
+            },
           ),
-          IconButton(
-            icon: Icon(
-              _isFavorite ? Icons.favorite : Icons.favorite_border,
-              color: _isFavorite ? Colors.red : Colors.white,
-            ),
-            onPressed: _toggleFavorite,
-          ),
-        ],
-      ),
-      body: _buildContent(),
-      bottomNavigationBar: _property != null ? _buildBottomBar() : null,
-    );
-  }
-
-  Widget _buildBottomBar() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bool hasAgent = _property?.agentContact != null;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, -1),
-          )
-        ],
-      ),
-      child: SafeArea(
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Price',
-                    style: TextStyle(
-                      color: isDark ? Colors.grey[400] : Colors.grey[600],
-                      fontSize: 14,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    FormattingUtils.formatIndianRupees(_property!.price),
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                  ),
-                ],
+          actions: [
+            // Favorite button
+            IconButton(
+              icon: Icon(
+                _isFavorite ? Icons.favorite : Icons.favorite_border,
+                color: _isFavorite ? Colors.red : null,
               ),
+              onPressed: () => _toggleFavorite(),
             ),
-            ElevatedButton.icon(
-              onPressed: _contactAgent,
-              style: ElevatedButton.styleFrom(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                backgroundColor: hasAgent
-                    ? Theme.of(context).colorScheme.primary
-                    : Colors.grey,
-              ),
-              icon: const Icon(Icons.phone),
-              label: Text(hasAgent ? 'Contact Agent' : 'No Agent'),
+            // Share button
+            IconButton(
+              icon: const Icon(Icons.share),
+              onPressed: () => _shareProperty(),
             ),
           ],
         ),
+        body: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _error != null
+                ? _buildErrorView()
+                : _buildPropertyDetail(),
       ),
     );
   }
 
-  Widget _buildContent() {
-    if (_isLoading) {
-      return const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 16),
-            Text('Loading property details...'),
-          ],
-        ),
-      );
-    }
-
-    if (_error != null) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline, size: 48, color: Colors.red),
-            const SizedBox(height: 16),
-            Text(
-              'Error loading property: $_error',
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _loadProperty,
-              child: const Text('Retry'),
-            ),
-          ],
-        ),
-      );
-    }
-
-    if (_property == null) {
-      return const Center(
-        child: Text('Property not found'),
-      );
-    }
-
-    return _buildPropertyDetails();
-  }
-
-  Widget _buildPropertyDetails() {
+  Widget _buildPropertyDetail() {
     final property = _property!;
     final Size screenSize = MediaQuery.of(context).size;
     final bool isTablet = screenSize.width > 600;
@@ -1151,5 +1080,26 @@ class _PropertyDetailScreenState extends State<PropertyDetailScreen>
     } else {
       return Icons.check_circle_outline;
     }
+  }
+
+  Widget _buildErrorView() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.error_outline, size: 48, color: Colors.red),
+          const SizedBox(height: 16),
+          Text(
+            'Error loading property: $_error',
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: _loadProperty,
+            child: const Text('Retry'),
+          ),
+        ],
+      ),
+    );
   }
 }

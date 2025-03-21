@@ -26,6 +26,7 @@ import 'features/property/presentation/providers/property_provider.dart';
 import 'features/storage/providers/storage_provider.dart';
 import 'features/home/providers/home_provider.dart';
 import 'features/auth/domain/providers/auth_provider.dart'; // Updated import path
+import 'features/search/domain/providers/saved_search_provider.dart'; // Added import for SavedSearchProvider
 
 // Make globalAuthService accessible throughout the app
 final GlobalAuthService globalAuthService = GlobalAuthService();
@@ -130,6 +131,9 @@ Future<void> main() async {
         ),
         ChangeNotifierProvider<StorageProvider>(
           create: (_) => StorageProvider(),
+        ),
+        ChangeNotifierProvider<SavedSearchProvider>(
+          create: (_) => SavedSearchProvider(),
         ),
         Provider<NotificationService>.value(value: notificationService),
         // FavoritesProvider is already provided above with proper dependencies

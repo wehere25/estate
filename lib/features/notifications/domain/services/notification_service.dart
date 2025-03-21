@@ -304,11 +304,19 @@ class NotificationService {
     Map<String, dynamic>? metadata,
   }) async {
     try {
+      DebugLogger.info('🔔 Starting to send notification to all users');
+      DebugLogger.info('📣 Title: $title');
+      DebugLogger.info('📣 Message: $message');
+      DebugLogger.info('📣 Type: $type');
+
       // Create the notification data
       final notificationData = {
         'title': title,
         'message': message,
-        'type': type.toString(),
+        'type': type
+            .toString()
+            .split('.')
+            .last, // Fix: Ensure type is stored as a string
         'actionUrl': actionUrl,
         'metadata': metadata,
         'timestamp': FieldValue.serverTimestamp(),
@@ -320,8 +328,35 @@ class NotificationService {
           .collection(globalNotificationsCollection)
           .add(notificationData);
 
+      DebugLogger.info(
+          '📣 Created global notification with ID: ${globalNotificationRef.id}');
+
       // Get all users
       final usersSnapshot = await _firestore.collection('users').get();
+      DebugLogger.info('📣 Found ${usersSnapshot.docs.length} users to notify');
+
+      if (usersSnapshot.docs.isEmpty) {
+        DebugLogger.warning('⚠️ No users found to send notifications to!');
+
+        // If no users found in the proper collection, at least try to send a notification to the current user
+        final currentUser = _auth.currentUser;
+        if (currentUser != null) {
+          DebugLogger.info(
+              '📣 Will send notification to at least the current user: ${currentUser.uid}');
+          await _saveNotificationToFirestore(
+              NotificationModel(
+                id: globalNotificationRef.id,
+                title: title,
+                message: message,
+                type: type,
+                userId: currentUser.uid,
+                createdAt: DateTime.now(),
+                actionUrl: actionUrl,
+                metadata: metadata,
+              ),
+              currentUser.uid);
+        }
+      }
 
       // Create a batch for efficient writes
       var batch = _firestore.batch();
@@ -329,16 +364,22 @@ class NotificationService {
 
       // Fan out the notification to all users
       for (var userDoc in usersSnapshot.docs) {
+        final userId = userDoc.id;
+        DebugLogger.info('📣 Adding notification for user: $userId');
+
+        // Fix: Use the correct path to user notifications
         final notificationRef = _firestore
+            .collection(_notificationsCollection)
+            .doc(userId)
             .collection(_userNotificationsSubCollection)
-            .doc(userDoc.id)
-            .collection('notifications')
             .doc(globalNotificationRef.id);
 
         batch.set(notificationRef, {
           ...notificationData,
-          'read': false,
-          'userId': userDoc.id,
+          'isRead': false, // Fix: Use isRead instead of read to match our model
+          'userId': userId,
+          'id': globalNotificationRef.id, // Fix: Ensure ID is set
+          'createdAt': FieldValue.serverTimestamp(), // Fix: Add createdAt field
         });
 
         operationCount++;
@@ -347,6 +388,8 @@ class NotificationService {
         if (operationCount >= 400) {
           // Using 400 to be safe
           await batch.commit();
+          DebugLogger.info(
+              '📣 Committed batch of $operationCount notifications');
           batch = _firestore.batch();
           operationCount = 0;
         }
@@ -355,11 +398,22 @@ class NotificationService {
       // Commit any remaining operations
       if (operationCount > 0) {
         await batch.commit();
+        DebugLogger.info(
+            '📣 Committed final batch of $operationCount notifications');
       }
 
+      // Show local notification
+      await showLocalNotification(
+        id: globalNotificationRef.id.hashCode,
+        title: title,
+        body: message,
+        payload: actionUrl,
+      );
+
+      DebugLogger.info('✅ Successfully sent notification to all users');
       return true;
     } catch (e) {
-      DebugLogger.error('Error sending notification to all users: $e');
+      DebugLogger.error('❌ Error sending notification to all users: $e');
       return false;
     }
   }
@@ -469,11 +523,37 @@ class NotificationService {
     String? payload,
   }) async {
     try {
-      // Here you would integrate with flutter_local_notifications
-      // For now, we'll just log it
-      DebugLogger.info('Local notification: $title - $body');
+      DebugLogger.info('🔔 Showing local notification: $title - $body');
+
+      // For now we're just logging, but in a real app you would use flutter_local_notifications
+      // For debugging purposes, create a local notification in Firestore for the current user
+      final user = _auth.currentUser;
+      if (user != null) {
+        // Create a notification model for the current user
+        final notification = NotificationModel(
+          id: 'local-$id',
+          title: title,
+          message: body,
+          type: NotificationType.system,
+          userId: user.uid,
+          createdAt: DateTime.now(),
+          actionUrl: payload,
+        );
+
+        // Save to Firestore
+        await _saveNotificationToFirestore(notification, user.uid);
+
+        // Add to stream to update UI immediately
+        _notificationController.add(notification);
+
+        DebugLogger.info(
+            '🔔 Local notification saved to Firestore and streamed to UI');
+      } else {
+        DebugLogger.warning(
+            '⚠️ Cannot show local notification: No user logged in');
+      }
     } catch (e) {
-      DebugLogger.error('Error showing local notification: $e');
+      DebugLogger.error('❌ Error showing local notification: $e');
     }
   }
 }

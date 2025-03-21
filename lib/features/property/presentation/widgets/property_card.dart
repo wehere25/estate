@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import '/features/property/domain/models/property_model.dart';
 import '/features/property/presentation/widgets/favorite_button.dart';
-import '/core/constants/app_colors.dart'; // Fix import path
-import '/core/utils/image_utils.dart'; // Fix import path
+import '/core/utils/image_utils.dart';
 import '/core/utils/formatting_utils.dart';
-import 'package:animations/animations.dart';
 
 class PropertyCard extends StatelessWidget {
   final PropertyModel property;
@@ -157,14 +155,21 @@ class PropertyCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 8),
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          _buildFeatureItem(
-                              context, Icons.king_bed, '${property.bedrooms}'),
-                          _buildFeatureItem(
-                              context, Icons.bathtub, '${property.bathrooms}'),
-                          _buildFeatureItem(context, Icons.square_foot,
-                              '${property.area.toInt()}'),
+                          Expanded(
+                            child: _buildFeatureItem(context, Icons.king_bed,
+                                '${property.bedrooms}'),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _buildFeatureItem(context, Icons.bathtub,
+                                '${property.bathrooms}'),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _buildFeatureItem(context, Icons.square_foot,
+                                '${property.area.toInt()}'),
+                          ),
                         ],
                       ),
                     ],
@@ -316,18 +321,22 @@ class PropertyCard extends StatelessWidget {
   Widget _buildFeatureItem(BuildContext context, IconData icon, String text) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     return Row(
+      mainAxisSize: MainAxisSize.min, // Make row take minimum space
       children: [
         Icon(
           icon,
           size: 16,
           color: isDarkMode ? Colors.white70 : Colors.grey[600],
         ),
-        const SizedBox(width: 4),
-        Text(
-          text,
-          style: TextStyle(
-            fontSize: 12,
-            color: isDarkMode ? Colors.white70 : Colors.grey[600],
+        const SizedBox(width: 2), // Reduce spacing
+        Flexible(
+          child: Text(
+            text,
+            overflow: TextOverflow.ellipsis, // Handle text overflow
+            style: TextStyle(
+              fontSize: 12,
+              color: isDarkMode ? Colors.white70 : Colors.grey[600],
+            ),
           ),
         ),
       ],

@@ -142,16 +142,32 @@ class _AppBottomNavState extends State<AppBottomNav>
   // Helper to adjust the index based on admin status
   int _getAdjustedIndex(int index, bool isAdmin) {
     // For display purposes - converts the app index to navbar index
-    if (!isAdmin && index >= 2) {
-      return index - 1;
+    // Correct index mapping for non-admin users
+    if (!isAdmin) {
+      // Map app indices to navbar indices correctly
+      switch (index) {
+        case 0:
+          return 0; // Home -> Home
+        case 1:
+          return 1; // Search -> Search
+        case 3:
+          return 2; // Favorites -> Favorites
+        case 4:
+          return 3; // Profile -> Profile
+        default:
+          return 0; // Default to home for safety
+      }
     }
-    return index;
+    return index; // For admin users, use the index as is
   }
 
-  // New helper to convert tapped index to navigation index
+  // Helper to convert tapped index to navigation index
   int _convertIndexForNavigation(int tappedIndex, bool isAdmin) {
     // For navigation purposes - converts the navbar index to app index
     if (!isAdmin && tappedIndex >= 2) {
+      // For non-admin users:
+      // Navbar index 2 (Favorites) corresponds to app index 3
+      // Navbar index 3 (Profile) corresponds to app index 4
       return tappedIndex + 1;
     }
     return tappedIndex;

@@ -558,16 +558,21 @@ class AdminProvider extends ChangeNotifier {
       _error = null;
       _safeNotifyListeners();
 
+      // First update local state immediately for better UX
+      final index = _users.indexWhere((u) => u.uid == userId);
+      if (index >= 0) {
+        _users[index] = _users[index].copyWith(status: status);
+        _safeNotifyListeners();
+      }
+
       // Create a clean payload with only required fields
       final payload = {
         'userId': userId,
         'status': status,
       };
 
-      // Use direct Firestore update in development mode to avoid Cloud Function errors
+      // In development mode, only use direct Firestore update
       if (DevUtils.isDevMode) {
-        // In dev mode, skip the actual Firestore call if it's failing with permission errors
-        // Just update the local state for UI testing
         try {
           await FirebaseFirestore.instance
               .collection('users')
@@ -575,53 +580,41 @@ class AdminProvider extends ChangeNotifier {
               .update({
             'status': status,
             'lastStatusUpdate': FieldValue.serverTimestamp(),
+            'updatedBy': FirebaseAuth.instance.currentUser?.uid ?? 'system',
           });
-        } catch (e) {
-          // If Firestore operation fails in dev mode, just log it and continue with local state update
-          DebugLogger.warning(
-              'Firestore status update failed in dev mode, using mock update: $e');
-        }
 
-        // Update local state regardless of Firestore success in dev mode
-        final index = _users.indexWhere((u) => u.uid == userId);
-        if (index >= 0) {
-          _users[index] = _users[index].copyWith(status: status);
-          // Try to log action but don't fail if it doesn't work
+          DebugLogger.info(
+              'Dev mode: User status updated successfully to $status');
+
+          // Log the action
           try {
             await _repository.logAdminAction(
               action: 'update_user_status',
               metadata: {'userId': userId, 'status': status},
             );
-          } catch (e) {
-            DebugLogger.warning('Failed to log admin action in dev mode: $e');
+          } catch (logError) {
+            // Just log the error but don't fail the operation
+            DebugLogger.warning(
+                'Failed to log admin action in dev mode: $logError');
           }
+        } catch (firestoreError) {
+          DebugLogger.warning(
+              'Direct Firestore update failed in dev mode: $firestoreError');
+          // We already updated the local state, so we'll keep that change
+          // even if the backend update failed
         }
-
-        // Show success message in dev mode
-        DebugLogger.info(
-            'Dev mode: User status updated successfully to $status');
       } else {
-        // Production: Try both approaches - first Cloud Function, then direct if that fails
+        // In production, try both cloud function and direct update
         try {
           final result =
               await _functions.httpsCallable('updateUserStatus').call(payload);
 
-          // Check if the operation was successful
           if (result.data != null && result.data['success'] == true) {
-            // Update local state
-            final index = _users.indexWhere((u) => u.uid == userId);
-            if (index >= 0) {
-              _users[index] = _users[index].copyWith(status: status);
-              // Log action
-              await _repository.logAdminAction(
-                action: 'update_user_status',
-                metadata: {'userId': userId, 'status': status},
-              );
-            }
-          } else {
-            throw Exception(result.data != null && result.data['error'] != null
-                ? result.data['error']
-                : 'Unknown error');
+            // Log action on success
+            await _repository.logAdminAction(
+              action: 'update_user_status',
+              metadata: {'userId': userId, 'status': status},
+            );
           }
         } catch (cloudError) {
           // Cloud function failed, try direct Firestore update as fallback
@@ -629,32 +622,29 @@ class AdminProvider extends ChangeNotifier {
               'Cloud Function failed, attempting direct update: $cloudError');
 
           try {
-            // Update user document directly
             await FirebaseFirestore.instance
                 .collection('users')
                 .doc(userId)
                 .update({
               'status': status,
               'lastStatusUpdate': FieldValue.serverTimestamp(),
+              'updatedBy': FirebaseAuth.instance.currentUser?.uid ?? 'system',
             });
 
-            // Update local state
-            final index = _users.indexWhere((u) => u.uid == userId);
-            if (index >= 0) {
-              _users[index] = _users[index].copyWith(status: status);
-
-              // Try to log action
-              try {
-                await _repository.logAdminAction(
-                  action: 'update_user_status',
-                  metadata: {'userId': userId, 'status': status},
-                );
-              } catch (logError) {
-                DebugLogger.warning('Failed to log admin action: $logError');
-              }
+            // Try to log action
+            try {
+              await _repository.logAdminAction(
+                action: 'update_user_status',
+                metadata: {'userId': userId, 'status': status},
+              );
+            } catch (logError) {
+              DebugLogger.warning('Failed to log admin action: $logError');
             }
           } catch (firestoreError) {
-            throw Exception('Failed to update user status: $firestoreError');
+            // Even if both the cloud function and Firestore update failed,
+            // we already updated the local state for better UX
+            DebugLogger.error(
+                'Both Cloud Function and direct update failed: $firestoreError');
           }
         }
       }

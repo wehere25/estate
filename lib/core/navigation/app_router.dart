@@ -33,6 +33,7 @@ import '../../features/admin/presentation/screens/manage_properties_screen.dart'
 import '../../features/admin/presentation/screens/analytics_screen.dart';
 import '../../features/admin/presentation/screens/property_edit_screen.dart';
 import '../../features/notifications/presentation/screens/notifications_screen.dart';
+import '../../features/search/presentation/screens/saved_searches_screen.dart';
 
 // Utils
 import '../../core/utils/debug_logger.dart';
@@ -408,6 +409,13 @@ class AppRouter {
           name: 'diagnostics',
           builder: (context, state) => const NavigationDiagnosticScreen(),
         ),
+
+        // NEW ROUTE
+        GoRoute(
+          path: '/saved_searches',
+          name: 'savedSearches',
+          builder: (context, state) => const SavedSearchesScreen(),
+        ),
       ],
     );
   }
@@ -511,6 +519,17 @@ class AppRouter {
           name: 'search',
           builder: (context, state) {
             final query = state.uri.queryParameters['q'];
+            return SearchScreen(initialQuery: query, showNavBar: true);
+          },
+        ),
+        GoRoute(
+          path: '/search_results',
+          name: 'searchResults',
+          builder: (context, state) {
+            final Map<String, dynamic>? extra =
+                state.extra as Map<String, dynamic>?;
+            final query =
+                extra?['query'] as String? ?? state.uri.queryParameters['q'];
             return SearchScreen(initialQuery: query, showNavBar: true);
           },
         ),
@@ -622,6 +641,11 @@ class AppRouter {
           path: '/dev/diagnostics',
           name: 'diagnostics',
           builder: (context, state) => const NavigationDiagnosticScreen(),
+        ),
+        GoRoute(
+          path: '/saved_searches',
+          name: 'savedSearches',
+          builder: (context, state) => const SavedSearchesScreen(),
         ),
       ],
       redirect: (context, state) {

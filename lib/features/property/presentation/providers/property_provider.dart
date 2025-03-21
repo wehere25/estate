@@ -24,6 +24,9 @@ class PropertyProvider with ChangeNotifier {
   String? _error;
   Map<String, dynamic> _filters = {};
 
+  // Property cache for optimized loading
+  final Map<String, PropertyModel> _propertyCache = {};
+
   PropertyProvider(this._repository, this._notificationProvider);
 
   // Getters
@@ -32,6 +35,7 @@ class PropertyProvider with ChangeNotifier {
   List<PropertyModel> get featuredProperties => _featuredProperties;
   List<PropertyModel> get recentProperties => _recentProperties;
   List<PropertyModel> get searchResults => _searchResults;
+  List<PropertyModel> get userProperties => _properties;
   PropertyModel? get selectedProperty => _selectedProperty;
   String? get error => _error;
 
@@ -157,10 +161,20 @@ class PropertyProvider with ChangeNotifier {
     }
   }
 
-  Future<PropertyModel?> getPropertyById(String id) async {
+  // Get a property by ID from cache (used for Recently Viewed optimization)
+  PropertyModel? getPropertyById(String id) {
+    return _propertyCache[id];
+  }
+
+  // Original method to fetch property by ID and update selected property
+  Future<PropertyModel?> fetchPropertyById(String id) async {
     _setLoading(true);
     try {
       _selectedProperty = await _repository.getPropertyById(id);
+      // Also add to cache for future use
+      if (_selectedProperty != null) {
+        _propertyCache[id] = _selectedProperty!;
+      }
       _error = null;
       return _selectedProperty;
     } catch (e) {
@@ -171,16 +185,20 @@ class PropertyProvider with ChangeNotifier {
     }
   }
 
-  // Add fetchPropertyById method that was missing
-  Future<void> fetchPropertyById(String id) async {
-    _setLoading(true);
+  // Prefetch a property and store in cache for faster access
+  Future<void> prefetchProperty(String id) async {
+    // Skip if already in cache
+    if (_propertyCache.containsKey(id)) {
+      return;
+    }
+
     try {
-      _selectedProperty = await _repository.getPropertyById(id);
-      _error = null;
+      final property = await _repository.getPropertyById(id);
+      if (property != null) {
+        _propertyCache[id] = property;
+      }
     } catch (e) {
-      _error = e.toString();
-    } finally {
-      _setLoading(false);
+      debugPrint('Error prefetching property $id: $e');
     }
   }
 

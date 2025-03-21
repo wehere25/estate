@@ -26,7 +26,8 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
     // Refresh favorites when screen opens
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        Provider.of<FavoritesProvider>(context, listen: false).refreshFavorites();
+        Provider.of<FavoritesProvider>(context, listen: false)
+            .refreshFavorites();
       }
     });
   }
@@ -37,6 +38,24 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
       currentIndex: 3, // Favorites is index 3 (or 2 for non-admin)
       title: 'My Favorites',
       showNavBar: widget.showNavBar, // Add this parameter
+      actions: [
+        // Add saved searches button
+        IconButton(
+          icon: const Icon(Icons.saved_search),
+          tooltip: 'Saved Searches',
+          onPressed: () => context.push('/saved_searches'),
+        ),
+        // Toggle view button
+        IconButton(
+          icon: Icon(_isGridView ? Icons.view_list : Icons.grid_view),
+          tooltip: _isGridView ? 'List View' : 'Grid View',
+          onPressed: () {
+            setState(() {
+              _isGridView = !_isGridView;
+            });
+          },
+        ),
+      ],
       body: Consumer<FavoritesProvider>(
         builder: (context, provider, _) {
           if (provider.isLoading) {
@@ -83,7 +102,8 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                   ),
                   const SizedBox(height: 24),
                   ElevatedButton(
-                    onPressed: () => context.go('/home'), // Changed from Navigator.pushReplacementNamed
+                    onPressed: () => context.go(
+                        '/home'), // Changed from Navigator.pushReplacementNamed
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.lightColorScheme.primary,
                       foregroundColor: Colors.white,
