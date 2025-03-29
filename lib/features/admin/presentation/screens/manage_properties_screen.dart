@@ -7,6 +7,7 @@ import '../../../../core/constants/app_colors.dart';
 import '/features/property/domain/models/property_model.dart';
 import '/features/property/presentation/providers/property_provider.dart';
 import '../../../../core/utils/debug_logger.dart';
+import '../../../../core/utils/snackbar_utils.dart';
 
 class ManagePropertiesScreen extends StatefulWidget {
   const ManagePropertiesScreen({Key? key}) : super(key: key);
@@ -395,10 +396,34 @@ class _ManagePropertiesScreenState extends State<ManagePropertiesScreen> {
   }
 
   // Helper method to navigate to property edit - handles nullable id
-  void _navigateToPropertyEdit(PropertyModel property) {
+  void _navigateToPropertyEdit(PropertyModel property) async {
     final id = property.id;
     if (id != null && id.isNotEmpty) {
-      context.push('/property/edit/$id');
+      setState(() => _isLoading = true);
+
+      try {
+        // Pre-fetch the property to ensure it's available in the edit screen
+        final propertyProvider =
+            Provider.of<PropertyProvider>(context, listen: false);
+
+        // Use fetchPropertyById to ensure the property is loaded from Firestore
+        await propertyProvider.fetchPropertyById(id);
+
+        // Navigate to the edit screen after prefetching
+        if (mounted) {
+          context.push('/property/edit/$id');
+        }
+      } catch (e) {
+        DebugLogger.error('Error prefetching property for edit', e);
+        if (mounted) {
+          SnackBarUtils.showErrorSnackBar(
+              context, 'Error loading property: ${e.toString()}');
+        }
+      } finally {
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
+      }
     }
   }
 

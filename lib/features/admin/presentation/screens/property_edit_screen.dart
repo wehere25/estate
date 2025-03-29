@@ -10,6 +10,7 @@ import '../../../property/presentation/providers/property_provider.dart';
 import '../../../storage/providers/storage_provider.dart';
 import '../../../../shared/widgets/loading_overlay.dart';
 import '../../../../core/utils/validation_utils.dart';
+import '../../../../features/property/presentation/widgets/shared_property_detail_view.dart';
 
 class PropertyEditScreen extends StatefulWidget {
   final String propertyId;
@@ -26,6 +27,7 @@ class _PropertyEditScreenState extends State<PropertyEditScreen> {
   PropertyModel? _property;
   bool _isLoading = true;
   String? _errorMessage;
+  bool _showPreview = false;
 
   // Form controllers
   final _titleController = TextEditingController();
@@ -73,8 +75,10 @@ class _PropertyEditScreenState extends State<PropertyEditScreen> {
     try {
       final propertyProvider =
           Provider.of<PropertyProvider>(context, listen: false);
+
+      // Use fetchPropertyById instead of getPropertyById to ensure we get the property from Firestore
       final property =
-          await propertyProvider.getPropertyById(widget.propertyId);
+          await propertyProvider.fetchPropertyById(widget.propertyId);
 
       if (property == null) {
         setState(() {
@@ -238,57 +242,82 @@ class _PropertyEditScreenState extends State<PropertyEditScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("Edit Property"),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
-      body: LoadingOverlay(
-        isLoading: _isLoading,
-        child: _errorMessage != null
-            ? Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.error_outline,
-                        size: 48, color: Colors.red),
-                    const SizedBox(height: 16),
-                    Text(_errorMessage!,
-                        style: const TextStyle(color: Colors.red)),
-                    const SizedBox(height: 16),
-                    ElevatedButton(
-                      onPressed: _loadProperty,
-                      child: const Text("Try Again"),
-                    ),
-                  ],
-                ),
-              )
-            : _buildForm(),
-      ),
-      bottomNavigationBar: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [
-            Expanded(
-              child: OutlinedButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text("Cancel"),
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: ElevatedButton(
+    return LoadingOverlay(
+      isLoading: _isLoading,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text('Edit Property ${_property?.id ?? ''}'),
+          actions: [
+            // Save button
+            if (_property != null && !_showPreview)
+              IconButton(
+                icon: const Icon(Icons.save),
+                tooltip: 'Save Changes',
                 onPressed: _saveProperty,
-                child: const Text("Save Changes"),
               ),
-            ),
+            // Preview button
+            if (_property != null)
+              IconButton(
+                icon: const Icon(Icons.preview),
+                tooltip: 'Preview Property',
+                onPressed: () {
+                  setState(() {
+                    _showPreview = !_showPreview;
+                  });
+                },
+              ),
           ],
         ),
+        body: _errorMessage != null
+            ? _buildErrorView()
+            : _property == null
+                ? const Center(child: CircularProgressIndicator())
+                : _showPreview
+                    ? _buildPreview()
+                    : _buildForm(),
+        floatingActionButton: _property != null && !_showPreview
+            ? FloatingActionButton.extended(
+                onPressed: _saveProperty,
+                icon: const Icon(Icons.save),
+                label: const Text('Save Changes'),
+              )
+            : null,
       ),
+    );
+  }
+
+  Widget _buildPreview() {
+    return Column(
+      children: [
+        Container(
+          color: Theme.of(context).colorScheme.primaryContainer,
+          padding: const EdgeInsets.all(8),
+          child: Row(
+            children: [
+              const Icon(Icons.admin_panel_settings),
+              const SizedBox(width: 8),
+              const Text('ADMIN PREVIEW MODE',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              const Spacer(),
+              TextButton.icon(
+                icon: const Icon(Icons.edit),
+                label: const Text('Back to Edit'),
+                onPressed: () {
+                  setState(() {
+                    _showPreview = false;
+                  });
+                },
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: SharedPropertyDetailView(
+            property: _property!,
+            isAdmin: true,
+          ),
+        ),
+      ],
     );
   }
 
@@ -668,6 +697,24 @@ class _PropertyEditScreenState extends State<PropertyEditScreen> {
             const SizedBox(height: 16),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildErrorView() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.error_outline, size: 48, color: Colors.red),
+          const SizedBox(height: 16),
+          Text(_errorMessage!, style: const TextStyle(color: Colors.red)),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: _loadProperty,
+            child: const Text("Try Again"),
+          ),
+        ],
       ),
     );
   }
