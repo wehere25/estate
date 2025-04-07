@@ -50,10 +50,10 @@ class LandingScreen extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 24),
-                      
+
                       // Title
                       const Text(
-                        'RealState',
+                        'Heaven Properties',
                         style: TextStyle(
                           fontSize: 36,
                           fontWeight: FontWeight.bold,
@@ -61,7 +61,7 @@ class LandingScreen extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      
+
                       // Tagline
                       const Text(
                         'Find Your Dream Home Today',
@@ -74,7 +74,7 @@ class LandingScreen extends StatelessWidget {
                   ),
                 ),
               ),
-              
+
               // Feature highlights
               Expanded(
                 flex: 4,
@@ -83,27 +83,31 @@ class LandingScreen extends StatelessWidget {
                     _buildFeatureItem(
                       icon: Icons.search,
                       title: 'Search Properties',
-                      description: 'Find properties matching your exact requirements with our advanced search options.',
+                      description:
+                          'Find properties matching your exact requirements with our advanced search options.',
                     ),
                     _buildFeatureItem(
                       icon: Icons.favorite,
                       title: 'Save Favorites',
-                      description: 'Save and compare your favorite properties to make the best decision.',
+                      description:
+                          'Save and compare your favorite properties to make the best decision.',
                     ),
                     _buildFeatureItem(
                       icon: Icons.map,
                       title: 'Map View',
-                      description: 'Browse properties on an interactive map to find the perfect location.',
+                      description:
+                          'Browse properties on an interactive map to find the perfect location.',
                     ),
                     _buildFeatureItem(
                       icon: Icons.notifications,
                       title: 'Get Notified',
-                      description: 'Receive alerts when new properties matching your criteria become available.',
+                      description:
+                          'Receive alerts when new properties matching your criteria become available.',
                     ),
                   ],
                 ),
               ),
-              
+
               // Action buttons at bottom
               Container(
                 padding: const EdgeInsets.all(24),
@@ -131,9 +135,9 @@ class LandingScreen extends StatelessWidget {
                         ),
                       ),
                     ),
-                    
+
                     const SizedBox(height: 16),
-                    
+
                     // Log in text button
                     TextButton(
                       onPressed: () => context.go('/login'),

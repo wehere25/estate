@@ -370,21 +370,58 @@ class _PropertyUploadScreenState extends State<PropertyUploadScreen>
         'ownerId': userId,
         'agentContact': agentContactData,
       };
+
+      String propertyId;
+      bool isNewProperty = widget.propertyToEdit == null;
+
       // Save property
-      if (widget.propertyToEdit != null && widget.propertyToEdit!.id != null) {
+      if (!isNewProperty && widget.propertyToEdit!.id != null) {
         await propertyProvider.updateProperty(
             widget.propertyToEdit!.id!, propertyData);
+        propertyId = widget.propertyToEdit!.id!;
       } else {
-        await propertyProvider.addNewProperty(propertyData);
+        propertyId = await propertyProvider.addNewProperty(propertyData);
       }
+
       if (mounted) {
+        // Get the full property model for the notification
+        PropertyModel? property =
+            await propertyProvider.fetchPropertyById(propertyId);
+
+        // Send notification for new property
+        if (isNewProperty && property != null && allImages.isNotEmpty) {
+          try {
+            // Consolidate all notification logic in one place
+            // Extract a clean property image URL for the notification
+            String? propertyImageUrl =
+                allImages.isNotEmpty ? allImages[0] : null;
+
+            // Set property image and price data
+            property = property.copyWith(
+              images: allImages,
+              price: double.parse(_priceController.text),
+            );
+
+            // Send notification to all users about new property - use only one method
+            await propertyProvider.createPropertyNotificationForAllUsers(
+              property: property,
+            );
+
+            DevUtils.log('✅ Property notification sent to all users');
+          } catch (e) {
+            DevUtils.log('❌ Error sending property notification: $e');
+            // Don't interrupt the flow if notification fails
+          }
+        }
+
         SnackBarUtils.showSuccessSnackBar(
             context,
-            widget.propertyToEdit != null
-                ? 'Property updated successfully'
-                : 'Property added successfully');
+            isNewProperty
+                ? 'Property added successfully'
+                : 'Property updated successfully');
+
         // Clear form
-        if (widget.propertyToEdit == null) {
+        if (isNewProperty) {
           _clearForm();
         }
 
@@ -505,6 +542,7 @@ class _PropertyUploadScreenState extends State<PropertyUploadScreen>
       onWillPop: _onWillPop,
       child: AppScaffold(
         currentIndex: 2,
+        showNavBar: widget.showNavBar,
         title: widget.propertyToEdit != null ? 'Edit Property' : 'Add Property',
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),

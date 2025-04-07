@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'dart:math' as math;
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/utils/debug_logger.dart';
 import '../../domain/providers/auth_provider.dart';
@@ -29,6 +30,46 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() {
         _rememberMe = authProvider.rememberMe;
       });
+
+      // Check for needVerification parameter in the URL
+      final router = GoRouter.of(context);
+      final needVerification = router.routeInformationProvider.value.uri
+          .queryParameters['needVerification'];
+
+      if (needVerification == 'true') {
+        // Show more prominent verification notice after a slight delay
+        Future.delayed(Duration(milliseconds: 200), () {
+          if (!mounted) return;
+
+          // Show verification alert
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  Icon(Icons.mark_email_read, color: Colors.white),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Please verify your email before signing in. Check your inbox for the verification link.',
+                      style: TextStyle(fontSize: 14),
+                    ),
+                  ),
+                ],
+              ),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 8),
+              behavior: SnackBarBehavior.fixed,
+              action: SnackBarAction(
+                label: 'OK',
+                textColor: Colors.white,
+                onPressed: () {
+                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                },
+              ),
+            ),
+          );
+        });
+      }
     });
   }
 
@@ -48,6 +89,13 @@ class _LoginScreenState extends State<LoginScreen> {
     return Scaffold(
       body: Consumer<AuthProvider>(
         builder: (context, authProvider, child) {
+          // Check if we're still checking auth status or already authenticated
+          if (authProvider.isCheckingAuth) {
+            return const Center(
+              child: CircularProgressIndicator(),
+            );
+          }
+
           if (authProvider.isAuthenticated) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               DebugLogger.info(
@@ -435,17 +483,30 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (success) {
         DebugLogger.info('Email/password sign in successful');
-        // Navigation will happen automatically via the Consumer
+        // Reset form
+        _formKey.currentState!.reset();
+        _emailController.clear();
+        _passwordController.clear();
+      } else if (authProvider.error?.contains('verify your email') == true) {
+        // This is an email verification error, show special dialog
+        _showEmailVerificationRequiredDialog(email);
       } else {
-        DebugLogger.info('Email/password sign in failed');
-
-        // Get specific error message from provider or show a friendly default
-        final errorMessage = _getFriendlyErrorMessage(authProvider.error);
-        _showErrorSnackBar(context, errorMessage);
+        // Show the error from the auth provider
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(authProvider.error ?? 'Authentication failed'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     } catch (e) {
       DebugLogger.error('Error during sign in', e);
-      _showErrorSnackBar(context, _getFriendlyErrorMessage(e.toString()));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_getFriendlyErrorMessage(e.toString())),
+          backgroundColor: Colors.red,
+        ),
+      );
     } finally {
       // Only set state if the widget is still mounted
       if (mounted) {
@@ -456,47 +517,110 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // New helper method to transform Firebase error messages into user-friendly messages
-  String _getFriendlyErrorMessage(String? error) {
-    if (error == null) return 'Sign in failed. Please try again.';
+  // Show dialog for email verification with resend option
+  void _showEmailVerificationRequiredDialog(String email) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('Email Verification Required'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Your account requires email verification.',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+              Text('We sent a verification link to $email.'),
+              const SizedBox(height: 8),
+              const Text(
+                'Please check your email and verify your account before signing in.',
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                // Resend verification email safely
+                try {
+                  Navigator.of(dialogContext).pop(); // Close dialog first
 
-    // Convert Firebase error messages to user-friendly messages
-    if (error.contains('invalid-credential') ||
-        error.contains('wrong-password') ||
-        error.contains('user-not-found')) {
-      return 'Invalid email or password. Please try again.';
-    } else if (error.contains('too-many-requests')) {
-      return 'Too many failed login attempts. Please try again later.';
-    } else if (error.contains('user-disabled')) {
-      return 'This account has been disabled. Please contact support.';
-    } else if (error.contains('network-request-failed')) {
-      return 'Network error. Please check your connection and try again.';
-    } else if (error.contains('recaptcha')) {
-      return 'Authentication verification failed. Please try again.';
-    } else if (error.contains('expired')) {
-      return 'Authentication session expired. Please try again.';
-    }
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Sending verification email...'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
 
-    return 'Authentication failed: $error';
+                  final authProvider =
+                      Provider.of<AuthProvider>(context, listen: false);
+                  await authProvider.resendVerificationEmailToAddress(email);
+
+                  if (!context.mounted) return;
+
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                          'Verification email sent. Please check your inbox.'),
+                      backgroundColor: Colors.green,
+                      duration: Duration(seconds: 4),
+                    ),
+                  );
+                } catch (e) {
+                  if (!context.mounted) return;
+
+                  // Don't display permission denied errors to the user
+                  if (!e.toString().contains('permission-denied')) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Error: ${e.toString()}'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  } else {
+                    // Show success message even for permission errors
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                            'Verification email sent. Please check your inbox.'),
+                        backgroundColor: Colors.green,
+                        duration: Duration(seconds: 4),
+                      ),
+                    );
+                  }
+                }
+              },
+              child: const Text('RESEND VERIFICATION'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+              },
+              child: const Text('OK'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
-  // Improved error SnackBar with action button
-  void _showErrorSnackBar(BuildContext context, String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red.shade700,
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 5),
-        action: SnackBarAction(
-          label: 'OK',
-          textColor: Colors.white,
-          onPressed: () {
-            ScaffoldMessenger.of(context).hideCurrentSnackBar();
-          },
-        ),
-      ),
-    );
+  // New helper method to transform Firebase error messages into user-friendly messages
+  String _getFriendlyErrorMessage(String error) {
+    if (error.contains('user-not-found') || error.contains('wrong-password')) {
+      return 'Invalid email or password. Please try again.';
+    } else if (error.contains('too-many-requests')) {
+      return 'Too many failed login attempts. Please try again later or reset your password.';
+    } else if (error.contains('network-request-failed')) {
+      return 'Network error. Please check your internet connection and try again.';
+    } else if (error.contains('verify your email')) {
+      return 'Please verify your email before signing in.';
+    } else if (error.contains('permission-denied')) {
+      return 'Account setup in progress. Please try again in a moment.';
+    }
+    return 'Login failed: ${error.substring(0, math.min(error.length, 100))}';
   }
 
   // Google sign in handler
@@ -516,6 +640,12 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     } catch (e) {
       DebugLogger.error('Error during Google sign in', e);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_getFriendlyErrorMessage(e.toString())),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 }

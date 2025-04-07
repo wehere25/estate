@@ -1,13 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-
-enum NotificationType {
-  propertyListed,
-  priceChange,
-  statusChange,
-  chat,
-  system,
-  other
-}
+import 'notification_type.dart';
 
 class NotificationModel {
   final String id;
@@ -40,9 +32,11 @@ class NotificationModel {
       id: doc.id,
       title: data['title'] ?? '',
       message: data['message'] ?? '',
-      type: _stringToNotificationType(data['type'] ?? ''),
+      type: NotificationType.fromString(data['type'] ?? ''),
       userId: data['userId'] ?? '',
-      createdAt: (data['createdAt'] as Timestamp).toDate(),
+      createdAt: data['createdAt'] is Timestamp
+          ? (data['createdAt'] as Timestamp).toDate()
+          : DateTime.now(),
       isRead: data['isRead'] ?? false,
       readAt: data['readAt'] != null
           ? (data['readAt'] as Timestamp).toDate()
@@ -56,7 +50,7 @@ class NotificationModel {
     return {
       'title': title,
       'message': message,
-      'type': type.toString().split('.').last,
+      'type': type.toValue(),
       'userId': userId,
       'createdAt': Timestamp.fromDate(createdAt),
       'isRead': isRead,
@@ -90,23 +84,6 @@ class NotificationModel {
       actionUrl: actionUrl ?? this.actionUrl,
       metadata: metadata ?? this.metadata,
     );
-  }
-
-  static NotificationType _stringToNotificationType(String type) {
-    switch (type.toLowerCase()) {
-      case 'propertylisted':
-        return NotificationType.propertyListed;
-      case 'pricechange':
-        return NotificationType.priceChange;
-      case 'statuschange':
-        return NotificationType.statusChange;
-      case 'chat':
-        return NotificationType.chat;
-      case 'system':
-        return NotificationType.system;
-      default:
-        return NotificationType.other;
-    }
   }
 
   @override

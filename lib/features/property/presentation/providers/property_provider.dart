@@ -7,7 +7,7 @@ import '/core/utils/dev_utils.dart'; // Add this import for DevUtils
 import '../../domain/models/property_model.dart';
 import '../../data/property_repository.dart';
 import '../../../notifications/presentation/providers/notification_provider.dart';
-import '../../../notifications/data/notification_model.dart'; // Import for NotificationType
+import '../../../notifications/domain/models/notification_type.dart';
 
 class PropertyProvider with ChangeNotifier {
   final PropertyRepository _repository;
@@ -229,14 +229,8 @@ class PropertyProvider with ChangeNotifier {
         'action': 'create',
       });
 
-      // Create notification after successful property creation
-      final property = await getPropertyById(docRef.id);
-      if (property != null) {
-        await _notificationProvider.createPropertyNotification(
-          property: property,
-          type: NotificationType.propertyListed,
-        );
-      }
+      // Notification is handled by PropertyUploadScreen
+      // Do not call createPropertyNotification here to avoid duplicates
 
       _error = null;
     } catch (e) {
@@ -600,11 +594,11 @@ class PropertyProvider with ChangeNotifier {
   }
 
   // Add new method for adding property
-  Future<void> addNewProperty(Map<String, dynamic> propertyData) async {
+  Future<String> addNewProperty(Map<String, dynamic> propertyData) async {
     _setLoading(true);
-    try {
-      String documentId = '';
+    String documentId = '';
 
+    try {
       // Check if in dev mode first
       if (DevUtils.isDev) {
         DevUtils.log('Using dev mode for property creation');
@@ -705,9 +699,11 @@ class PropertyProvider with ChangeNotifier {
       }
 
       _error = null;
+      return documentId;
     } catch (e) {
       _error = e.toString();
       DevUtils.log('Error adding property: $e');
+      return '';
     } finally {
       _setLoading(false);
     }
@@ -745,6 +741,52 @@ class PropertyProvider with ChangeNotifier {
         return PropertyStatus.unavailable;
       default:
         return PropertyStatus.available;
+    }
+  }
+
+  // Add new method to create a property notification for all users
+  Future<void> createPropertyNotificationForAllUsers({
+    required PropertyModel property,
+    String? imageUrl,
+    double? price,
+  }) async {
+    try {
+      _setLoading(true);
+      DevUtils.log(
+          'Creating notification for all users about new property: ${property.id}');
+
+      // Check if this property already has an associated notification
+      final propertyDoc =
+          await _firestore.collection('properties').doc(property.id).get();
+      final hasNotification = propertyDoc.data()?['notificationSent'] == true;
+
+      if (hasNotification) {
+        DevUtils.log(
+            '⚠️ Property notification already sent, skipping duplicate: ${property.id}');
+        return;
+      }
+
+      // Use the notification provider to send the notification - only sends one type
+      await _notificationProvider.createPropertyNotification(
+        property: property,
+        type: NotificationType.propertyListed,
+        sendToAllUsers: true,
+      );
+
+      // Mark the property as having a notification to prevent duplicates
+      await _firestore.collection('properties').doc(property.id).update({
+        'notificationSent': true,
+        'notificationSentAt': FieldValue.serverTimestamp(),
+      });
+
+      _error = null;
+      DevUtils.log(
+          '✅ Successfully sent notification to all users about new property');
+    } catch (e) {
+      _error = e.toString();
+      DevUtils.log('❌ Error creating property notification for all users: $e');
+    } finally {
+      _setLoading(false);
     }
   }
 }

@@ -39,7 +39,7 @@ class LoginPage extends StatelessWidget {
                     ),
                     const SizedBox(height: 16),
                     Text(
-                      'Welcome to RealState',
+                      'Welcome to Heaven Properties',
                       style: theme.textTheme.headlineMedium?.copyWith(
                         color: theme.colorScheme.onPrimary,
                         fontWeight: FontWeight.bold,

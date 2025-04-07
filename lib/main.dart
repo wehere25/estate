@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:async';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
+import 'package:flutter_native_splash/flutter_native_splash.dart';
 
 // Core imports
 import 'core/config/firebase_options.dart';
@@ -14,26 +16,34 @@ import 'core/services/global_auth_service.dart';
 import 'core/utils/navigation_logger.dart';
 import 'core/navigation/app_router.dart';
 import 'core/theme/app_theme.dart';
+import 'core/utils/notification_helper.dart';
 
 // Feature imports
-import 'features/notifications/presentation/providers/notification_provider.dart'
-    as notifications;
+import 'features/notifications/presentation/providers/notification_provider.dart';
 import 'features/notifications/domain/services/notification_service.dart';
-import 'features/notifications/data/notification_repository.dart';
-import 'features/property/data/property_repository.dart';
-import 'features/favorites/providers/favorites_provider.dart';
 import 'features/property/presentation/providers/property_provider.dart';
-import 'features/storage/providers/storage_provider.dart';
+import 'features/property/data/property_repository.dart';
+import 'features/search/domain/providers/saved_search_provider.dart';
+import 'features/favorites/providers/favorites_provider.dart';
 import 'features/home/providers/home_provider.dart';
+import 'features/storage/providers/storage_provider.dart';
 import 'features/auth/domain/providers/auth_provider.dart'; // Updated import path
-import 'features/search/domain/providers/saved_search_provider.dart'; // Added import for SavedSearchProvider
 
 // Make globalAuthService accessible throughout the app
 final GlobalAuthService globalAuthService = GlobalAuthService();
 
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  // Keep native splash screen up until initialization completes
+  final WidgetsBinding widgetsBinding =
+      WidgetsFlutterBinding.ensureInitialized();
+  FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
+
   DebugLogger.info('🚀 App starting - Flutter binding initialized');
+
+  // Start a timer to remove splash screen after exactly 1 second
+  Timer(const Duration(seconds: 1), () {
+    FlutterNativeSplash.remove();
+  });
 
   // Guard flag to prevent duplicate initializations
   bool isAppAlreadyInitialized = false;
@@ -45,6 +55,16 @@ Future<void> main() async {
         options: DefaultFirebaseOptions.currentPlatform,
       );
       DebugLogger.info('✅ Firebase initialized successfully');
+
+      // Enable Firestore debug logging AFTER initialization
+      if (kDebugMode) {
+        DebugLogger.info('Enabling Firestore debug logging');
+        FirebaseFirestore.instance.settings = Settings(
+          persistenceEnabled: true,
+          cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+        );
+        FirebaseFirestore.setLoggingEnabled(true);
+      }
     } else {
       DebugLogger.info(
           '✅ Firebase was already initialized, using existing instance');
@@ -96,7 +116,15 @@ Future<void> main() async {
 
   // Initialize notification service
   final notificationService = NotificationService();
-  await notificationService.initialize();
+  try {
+    await notificationService.initialize();
+    // Also initialize the local notification helper
+    await NotificationHelper.initialize();
+    DebugLogger.info('✅ Notification services initialized');
+  } catch (e) {
+    DebugLogger.error('❌ Error initializing notification services', e);
+    // Continue anyway to not block the app
+  }
 
   // Build and run app
   DebugLogger.info('🏁 Starting app with MultiProvider');
@@ -112,17 +140,15 @@ Future<void> main() async {
         ChangeNotifierProvider<ThemeProvider>(
           create: (_) => ThemeProvider(),
         ),
-        ChangeNotifierProvider<notifications.NotificationProvider>(
-          create: (_) => notifications.NotificationProvider(
-            NotificationRepository(),
+        ChangeNotifierProvider<NotificationProvider>(
+          create: (_) => NotificationProvider(
             NotificationService(),
           ),
         ),
         ChangeNotifierProvider<PropertyProvider>(
           create: (context) => PropertyProvider(
             PropertyRepository(),
-            Provider.of<notifications.NotificationProvider>(context,
-                listen: false),
+            Provider.of<NotificationProvider>(context, listen: false),
           ),
         ),
         ChangeNotifierProvider<FavoritesProvider>(
@@ -134,6 +160,9 @@ Future<void> main() async {
         ),
         ChangeNotifierProvider<SavedSearchProvider>(
           create: (_) => SavedSearchProvider(),
+        ),
+        ChangeNotifierProvider<HomeProvider>(
+          create: (_) => HomeProvider(),
         ),
         Provider<NotificationService>.value(value: notificationService),
         // FavoritesProvider is already provided above with proper dependencies
@@ -293,16 +322,9 @@ class _AppWithErrorBoundaryState extends State<AppWithErrorBoundary> {
       return MaterialApp(
         debugShowCheckedModeBanner: false,
         home: Scaffold(
-          body: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: const [
-                CircularProgressIndicator(),
-                SizedBox(height: 16),
-                Text('Initializing application...'),
-              ],
-            ),
-          ),
+          backgroundColor: Colors.white, // Use a plain background color
+          body: const SizedBox
+              .shrink(), // Empty widget to prevent default Flutter logo
         ),
       );
     }
@@ -323,39 +345,44 @@ class MyApp extends StatelessWidget {
       final router = AppRouter.router;
       DebugLogger.info('✅ Got router from AppRouter.router');
 
-      return MultiProvider(
-        providers: [
-          ChangeNotifierProvider(create: (_) => ThemeProvider()),
-          ChangeNotifierProvider(create: (_) => AuthProvider()),
-          ChangeNotifierProvider(create: (_) => HomeProvider()),
-          // FavoritesProvider is already registered in the main MultiProvider
-          // Make sure to add NotificationProvider before PropertyProvider
-          ChangeNotifierProvider(
-              create: (_) => notifications.NotificationProvider(
-                    NotificationRepository(),
-                    NotificationService(),
-                  )),
-          // Other providers
-        ],
-        child: Consumer<ThemeProvider>(
-          builder: (context, themeProvider, child) {
-            return MaterialApp.router(
-              title: 'Real Estate App',
-              routerConfig: router,
-              debugShowCheckedModeBanner: false,
-              theme: themeProvider.isDarkMode
-                  ? AppTheme.darkTheme
-                  : AppTheme.lightTheme,
-              themeMode: themeProvider.themeMode,
-              builder: (context, child) {
-                return child ??
-                    const Scaffold(
-                      body: Center(child: CircularProgressIndicator()),
-                    );
-              },
-            );
-          },
-        ),
+      return Consumer<ThemeProvider>(
+        builder: (context, themeProvider, child) {
+          return MaterialApp.router(
+            title: 'Heaven Properties',
+            routerConfig: router,
+            debugShowCheckedModeBanner: false,
+            theme: themeProvider.isDarkMode
+                ? AppTheme.darkTheme.copyWith(
+                    appBarTheme: AppTheme.darkTheme.appBarTheme.copyWith(
+                      titleTextStyle: TextStyle(
+                        fontFamily: 'Poppins',
+                        fontSize: 18, // Smaller font size to fit long app names
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  )
+                : AppTheme.lightTheme.copyWith(
+                    appBarTheme: AppTheme.lightTheme.appBarTheme.copyWith(
+                      titleTextStyle: TextStyle(
+                        fontFamily: 'Poppins',
+                        fontSize: 18, // Smaller font size to fit long app names
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black,
+                      ),
+                    ),
+                  ),
+            themeMode: themeProvider.themeMode,
+            builder: (context, child) {
+              return child ??
+                  const Scaffold(
+                    backgroundColor: Colors.white,
+                    body: SizedBox
+                        .shrink(), // Empty widget to prevent any default indicators
+                  );
+            },
+          );
+        },
       );
     } catch (e) {
       DebugLogger.error('❌ CRITICAL ERROR in MyApp build', e);

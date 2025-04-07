@@ -1,0 +1,26 @@
+flutter_native_splash:
+  # Use black background with app logo
+  color: "#000000"
+  image: assets/images/logos/app_logo.png
+  
+  # Parameters to control logo size
+  branding_mode: bottom
+  
+  android: true
+  ios: true
+  
+  # Configure Android 12 splash screen with black background
+  android_12:
+    image: assets/images/logos/app_logo.png
+    icon_background_color: "#000000"
+
+  # Center the logo and make sure it's not cropped
+  # Use fill instead of scaleAspectFit to make the logo larger
+  android_gravity: center
+  ios_content_mode: center
+  
+  # Use a smaller padding around the logo to make it appear larger
+  web_image_mode: center
+  
+  # This will make sure the system status bar is transparent during splash
+  fullscreen: true 

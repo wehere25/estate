@@ -26,6 +26,8 @@ class _SavedSearchesScreenState extends State<SavedSearchesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Saved Searches'),
@@ -35,7 +37,7 @@ class _SavedSearchesScreenState extends State<SavedSearchesScreen> {
         ),
       ),
       body: Consumer<SavedSearchProvider>(
-        builder: (context, provider, child) {
+        builder: (context, provider, _) {
           if (provider.isLoading) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -48,13 +50,12 @@ class _SavedSearchesScreenState extends State<SavedSearchesScreen> {
                   const Icon(Icons.error_outline, size: 48, color: Colors.red),
                   const SizedBox(height: 16),
                   Text(
-                    'Error: ${provider.error ?? "An error occurred"}',
+                    provider.error ?? 'Unknown error',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.red),
                   ),
                   const SizedBox(height: 16),
                   ElevatedButton(
-                    onPressed: () => provider.loadSavedSearches(),
+                    onPressed: provider.loadSavedSearches,
                     child: const Text('Retry'),
                   ),
                 ],
@@ -67,26 +68,32 @@ class _SavedSearchesScreenState extends State<SavedSearchesScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.search_off, size: 64, color: Colors.grey),
+                  Icon(
+                    Icons.search_off,
+                    size: 64,
+                    color: isDarkMode ? Colors.white60 : Colors.black38,
+                  ),
                   const SizedBox(height: 16),
-                  const Text(
-                    'No Saved Searches',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  Text(
+                    'No saved searches yet',
+                    style: Theme.of(context).textTheme.titleLarge,
                   ),
                   const SizedBox(height: 8),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 32),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 32),
                     child: Text(
-                      'Save your searches to get notified about new properties that match your criteria.',
+                      'When you save searches, they will appear here for quick access',
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.grey),
+                      style: TextStyle(
+                        color: isDarkMode ? Colors.white70 : Colors.black54,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 24),
                   ElevatedButton.icon(
-                    icon: const Icon(Icons.search),
-                    label: const Text('Search Properties'),
                     onPressed: () => context.go('/search'),
+                    icon: const Icon(Icons.search),
+                    label: const Text('Start Searching'),
                   ),
                 ],
               ),
@@ -102,8 +109,8 @@ class _SavedSearchesScreenState extends State<SavedSearchesScreen> {
               return SavedSearchTile(
                 savedSearch: savedSearch,
                 onTap: () {
-                  // Navigate to search results with this saved search
-                  context.go(
+                  // Use push instead of go to maintain navigation history
+                  context.push(
                     '/search_results',
                     extra: {
                       'query': savedSearch.query,
@@ -133,25 +140,22 @@ class _SavedSearchesScreenState extends State<SavedSearchesScreen> {
     );
   }
 
+  // Show confirmation dialog before deleting a saved search
   Future<bool> _confirmDelete(BuildContext context) async {
     return await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
             title: const Text('Delete Saved Search'),
             content: const Text(
-              'Are you sure you want to delete this saved search? This action cannot be undone.',
-            ),
-            actions: <Widget>[
+                'Are you sure you want to delete this saved search? This action cannot be undone.'),
+            actions: [
               TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: const Text('CANCEL'),
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
               ),
               TextButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                style: TextButton.styleFrom(
-                  foregroundColor: Theme.of(context).colorScheme.error,
-                ),
-                child: const Text('DELETE'),
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Delete'),
               ),
             ],
           ),

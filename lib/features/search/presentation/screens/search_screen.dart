@@ -5,7 +5,7 @@ import '/features/property/domain/models/property_model.dart';
 import '/features/property/presentation/providers/property_provider.dart';
 import '/features/property/presentation/widgets/property_card.dart';
 import '/core/constants/app_colors.dart';
-import '../../../../core/navigation/app_navigation.dart';
+import '../../../../core/navigation/app_scaffold.dart';
 import '../../domain/providers/saved_search_provider.dart';
 import '../../domain/models/saved_search.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -348,27 +348,52 @@ class _SearchScreenState extends State<SearchScreen>
   Widget build(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
+    // Determine if we need to show a back button
+    final bool showBackButton = _currentQuery.isNotEmpty && !widget.showNavBar;
+
     return AppScaffold(
       currentIndex: 1, // Search is index 1
-      title: 'Property Search',
       showNavBar: widget.showNavBar,
-      actions: [
-        if (_currentQuery.isNotEmpty)
-          IconButton(
-            icon: const Icon(Icons.bookmark_add_outlined),
-            tooltip: 'Save this search',
-            onPressed: _saveCurrentSearch,
+      title: 'Property Search',
+      customAppBar: AppBar(
+        backgroundColor: AppColors.primaryColor,
+        elevation: 4,
+        title: Text(
+          _currentQuery.isNotEmpty ? 'Search Results' : 'Property Search',
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
           ),
-        IconButton(
-          icon: Icon(_isGridView ? Icons.view_list : Icons.grid_view),
-          tooltip: _isGridView ? 'Switch to list view' : 'Switch to grid view',
-          onPressed: () {
-            setState(() {
-              _isGridView = !_isGridView;
-            });
-          },
         ),
-      ],
+        leading: showBackButton || context.canPop()
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back, color: Colors.white),
+                onPressed: () => context.pop(),
+              )
+            : null,
+        actions: [
+          // View toggle button for search results
+          if (_currentQuery.isNotEmpty)
+            IconButton(
+              icon: Icon(_isGridView ? Icons.view_list : Icons.grid_view,
+                  color: Colors.white),
+              onPressed: () {
+                setState(() {
+                  _isGridView = !_isGridView;
+                });
+              },
+              tooltip: _isGridView ? 'List View' : 'Grid View',
+            ),
+          // Save search button (only show when there are results)
+          if (_currentQuery.isNotEmpty && !widget.showNavBar)
+            IconButton(
+              icon: const Icon(Icons.bookmark_outline, color: Colors.white),
+              onPressed: _saveCurrentSearch,
+              tooltip: 'Save Search',
+            ),
+        ],
+      ),
       body: Column(
         children: [
           Padding(

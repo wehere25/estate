@@ -15,6 +15,7 @@ import '/core/theme/theme_provider.dart';
 import '/core/services/global_auth_service.dart' show GlobalAuthService;
 import '../../../../features/auth/domain/providers/auth_provider.dart';
 import '../../../../features/auth/domain/services/admin_service.dart';
+import '../../../../core/navigation/app_scaffold.dart';
 import './about_developer_screen.dart'; // Import the AboutDeveloperScreen
 import '/features/property/domain/models/property_model.dart';
 import '/features/property/domain/services/property_service.dart';
@@ -27,13 +28,26 @@ class ProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Add debug logging to track ProfileScreen building and navbar visibility
+    debugPrint(
+        'NAVBAR DEBUG: ProfileScreen building with showNavBar=${showNavBar}');
+
     return showNavBar
         ? Scaffold(
             appBar: AppBar(
-              title: const Text('My Profile'),
+              backgroundColor: AppColors.primaryColor,
+              elevation: 4,
+              title: const Text(
+                'My Profile',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
               actions: [
                 IconButton(
-                  icon: const Icon(Icons.settings),
+                  icon: const Icon(Icons.settings, color: Colors.white),
                   onPressed: () {
                     // Create settings modal function inline
                     showModalBottomSheet(
@@ -51,7 +65,36 @@ class ProfileScreen extends StatelessWidget {
               },
             ),
           )
-        : const _ProfileScreenContent(); // Just return the content without wrapping in scaffold when used in shell
+        : AppScaffold(
+            currentIndex: 3, // Explicitly set index for Profile
+            showAppBar: true,
+            showNavBar: showNavBar,
+            customAppBar: AppBar(
+              backgroundColor: AppColors.primaryColor,
+              elevation: 4,
+              title: const Text(
+                'My Profile',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.settings, color: Colors.white),
+                  onPressed: () {
+                    showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true,
+                      builder: (context) => const _SettingsModalContent(),
+                    );
+                  },
+                ),
+              ],
+            ),
+            body: const _ProfileScreenContent(),
+          );
   }
 }
 
@@ -381,6 +424,8 @@ class _ProfileScreenContentState extends State<_ProfileScreenContent> {
   Widget _buildProfileHeader() {
     return Container(
       padding: const EdgeInsets.all(16),
+      // Add background color to ensure header is visible regardless of theme
+      color: Theme.of(context).scaffoldBackgroundColor,
       child: Column(
         children: [
           // Profile image with photo management options

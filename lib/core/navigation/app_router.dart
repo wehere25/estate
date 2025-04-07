@@ -8,10 +8,12 @@ import '../../features/admin/presentation/wrappers/admin_wrapper.dart';
 
 // Auth imports
 import '../../features/auth/domain/providers/auth_provider.dart';
+import '../../features/auth/domain/enums/auth_status.dart';
 import '../../features/auth/presentation/screens/login_screen.dart';
 import '../../features/auth/presentation/screens/register_screen.dart';
 import '../../features/auth/presentation/screens/reset_password_screen.dart';
 import '../../features/auth/presentation/screens/landing_screen.dart';
+import '../../features/auth/presentation/screens/splash_screen.dart';
 import '../../features/auth/presentation/wrappers/auth_wrapper.dart';
 
 // Feature imports
@@ -39,6 +41,26 @@ import '../../features/search/presentation/screens/saved_searches_screen.dart';
 import '../../core/utils/debug_logger.dart';
 import '../utils/navigation_logger.dart';
 import '../../features/auth/domain/services/admin_service.dart';
+
+// Navigation keys
+final GlobalKey<NavigatorState> _rootNavigatorKey =
+    GlobalKey<NavigatorState>(debugLabel: 'root');
+final GlobalKey<NavigatorState> _shellNavigatorKey =
+    GlobalKey<NavigatorState>(debugLabel: 'shell');
+
+// Store the original request path for redirecting after login
+String? _originalRequestPath;
+
+// Auth state refresh notifier
+final _refreshNotifier = AuthRefreshNotifier();
+
+// Auth refresh notifier to trigger router refresh when auth state changes
+class AuthRefreshNotifier extends ChangeNotifier {
+  // Call this method when auth state changes
+  void notifyAuthChanged() {
+    notifyListeners();
+  }
+}
 
 class AppRouter {
   // Private constructor to prevent instantiation
@@ -86,7 +108,7 @@ class AppRouter {
 
     return GoRouter(
       navigatorKey: rootNavigatorKey,
-      initialLocation: '/',
+      initialLocation: authProvider.isAuthenticated ? '/home' : '/',
       debugLogDiagnostics: true, // Enable debug logs in development
 
       // Error handling for routes not found
@@ -120,121 +142,101 @@ class AppRouter {
       redirect: (context, state) {
         DebugLogger.route('Redirecting from: ${state.uri.path}');
 
-        // If on root path, redirect authenticated users directly to home with proper navigation
-        if (state.uri.path == '/') {
-          if (authProvider.isAuthenticated) {
-            DebugLogger.navClick('/', '/home',
-                params: {'reason': 'root_redirect', 'auth': 'true'});
-            return '/home';
-          }
-          return null; // Don't redirect unauthenticated users from splash screen
-        }
+        // Get current auth status
+        final isLoggedIn = authProvider.isAuthenticated;
+        final isVerified = authProvider.user?.emailVerified ?? false;
+        final isLoading = authProvider.isLoading;
+        final isCheckingAuth = authProvider.isCheckingAuth;
+        final authStatus = authProvider.status;
 
-        // If already authenticated and trying to access other public routes
-        if (authProvider.isAuthenticated &&
-            (publicRoutes.contains(state.uri.path) && state.uri.path != '/')) {
+        // For previously authenticated users, skip splash screen to prevent it from showing on every app launch
+        if (state.uri.path == '/' &&
+            isLoggedIn &&
+            !isLoading &&
+            !isCheckingAuth) {
+          DebugLogger.info(
+              'User already authenticated, skipping splash screen');
           return '/home';
         }
 
-        // Allow access to public routes
-        if (publicRoutes.contains(state.uri.path)) {
+        // Never redirect from the splash screen during initial app launch - let it handle navigation
+        if (state.uri.path == '/' && (isLoading || isCheckingAuth)) {
           return null;
         }
 
-        // Rest of your existing redirect logic...
-        // Skip redirect logic for splash screen to ensure it always shows
-        if (state.uri.path == '/') {
-          return null; // Don't redirect from splash screen
+        // If we're still checking auth status, don't redirect
+        if (isCheckingAuth) {
+          return null;
         }
 
-        // Log navigation events
-        NavigationLogger.log(
-          NavigationEventType.routeChange,
-          'GoRouter redirect triggered',
-          data: {
-            'path': state.uri.path,
-            'isAuthenticated': authProvider.isAuthenticated
-          },
-        );
+        // Store current path for later redirect if needed
+        final goingTo = state.matchedLocation;
+        if (!isLoggedIn &&
+            !publicRoutes.contains(goingTo) &&
+            goingTo != '/login') {
+          DebugLogger.info('Storing redirect path: $goingTo');
+          _originalRequestPath = goingTo;
+        }
 
-        // Path being navigated to
-        final path = state.uri.path;
+        // Don't redirect if still loading auth state
+        if (isLoading) {
+          return null;
+        }
 
-        // Check if the user is authenticated
-        final isAuthenticated = authProvider.isAuthenticated;
+        // Handle email verification requirement
+        // Important: Check unverified status first to prevent auth state flicker
+        if (authStatus == AuthStatus.unverified ||
+            (isLoggedIn && !isVerified && !publicRoutes.contains(goingTo))) {
+          DebugLogger.info('User email not verified, redirecting to login');
 
-        // Use AdminService for admin checks - use synchronous method for UI decisions
-        final isAdmin =
-            isAuthenticated && AdminService.isUserAdmin(authProvider.user);
+          // Force sign out unverified users and redirect to login
+          // Use microtask to avoid router issues
+          Future.microtask(() async {
+            await authProvider.signOut();
+          });
 
-        // Developer-only routes are only available in debug mode with specific auth
-        final isDeveloper = kDebugMode && isAdmin;
+          return '/login?needVerification=true';
+        }
 
-        // Check if path starts with a specific pattern
-        bool pathStartsWith(String prefix) => path.startsWith(prefix);
-
-        // ADMIN ROUTES CHECK
-        if (pathStartsWith('/admin/') ||
-            pathStartsWith('/property/add') ||
-            pathStartsWith('/property/edit/') ||
-            pathStartsWith('/property/upload')) {
-          // If attempting to access admin routes without admin privileges
-          if (!isAdmin) {
-            DebugLogger.warn(
-                'Non-admin user attempted to access admin route: $path');
-            return isAuthenticated ? '/home' : '/login';
+        // Authentication redirects
+        if (!isLoggedIn) {
+          // Allow public paths without authentication
+          if (publicRoutes.contains(goingTo)) {
+            return null;
           }
-          return null; // Allow access for admins
-        }
 
-        // DEVELOPER ROUTES CHECK
-        if (pathStartsWith('/dev/')) {
-          // Only allow developer routes in debug mode with developer role
-          if (!isDeveloper) {
-            DebugLogger.warning(
-                'Non-developer tried to access dev route: $path');
-            return '/home';
+          // Redirect to login for protected paths
+          if (goingTo != '/login' && goingTo != '/register') {
+            DebugLogger.info(
+                'Not authenticated, redirecting to login from $goingTo');
+            return '/login';
           }
-          return null; // Allow access for developers
-        }
-
-        // PROPERTY DETAIL ROUTES - Special handling for property detail routes
-        if (pathStartsWith('/property/') &&
-            !pathStartsWith('/property/add') &&
-            !pathStartsWith('/property/edit/')) {
-          // If trying to view property details without authentication
-          if (!isAuthenticated) {
-            final redirectPath = path;
-            DebugLogger.info('Storing redirect path: $redirectPath');
-            // Store path locally until authentication
-            return '/login?redirect=$redirectPath';
+        } else {
+          // Redirect authenticated users away from auth screens
+          if (goingTo == '/login' || goingTo == '/register') {
+            return _originalRequestPath ?? '/home';
           }
-          return null; // Allow access to property details for authenticated users
         }
 
-        // USER ROUTES CHECK - Require authentication for user routes
-        if (userRoutes.contains(path) ||
-            userRoutes.any((route) => pathStartsWith("$route/"))) {
-          if (!isAuthenticated) {
-            final redirectPath = path;
-            DebugLogger.info('Storing redirect path: $redirectPath');
-            // Store path locally until authentication
-            return '/login?redirect=$redirectPath';
-          }
-          return null; // Allow access for authenticated users
+        // Handle initial route redirection - only redirect authenticated users
+        // But don't override splash screen behavior
+        if (isLoggedIn && (state.uri.path == '/landing')) {
+          DebugLogger.info(
+              'User authenticated, redirecting to shell route /home');
+          return '/home';
         }
 
-        // PUBLIC ROUTES - Always accessible
-        if (publicRoutes.contains(path)) {
-          // If user is already authenticated and trying to access login/register
-          if (isAuthenticated &&
-              (path == '/login' || path == '/register' || path == '/')) {
-            return '/home';
-          }
-          return null; // Allow access to public routes
+        // For first launch, don't redirect from splash screen
+        // but redirect root path to landing if coming from elsewhere
+        if (!isLoggedIn &&
+            state.uri.path == '/' &&
+            state.fullPath != null &&
+            state.fullPath != '/') {
+          DebugLogger.info(
+              'First visit from somewhere else, redirecting to landing screen');
+          return '/landing';
         }
 
-        // For all other routes, no redirect needed
         return null;
       },
 
@@ -244,8 +246,14 @@ class AppRouter {
         GoRoute(
           path: '/',
           name: 'splash',
-          builder: (context, state) => const AuthWrapper(),
-          // Initial loading screen; checks authentication status and redirects accordingly
+          builder: (context, state) => const SplashScreen(),
+          // Initial splash screen that shows app logo and transitions to landing/login
+        ),
+        GoRoute(
+          path: '/landing',
+          name: 'landing',
+          builder: (context, state) => const LandingScreen(),
+          // Introductory page showcasing featured properties before login
         ),
         GoRoute(
           path: '/login',
@@ -264,12 +272,6 @@ class AppRouter {
           name: 'resetPassword',
           builder: (context, state) => const ResetPasswordScreen(),
           // Allows users to reset forgotten passwords via email link
-        ),
-        GoRoute(
-          path: '/landing',
-          name: 'landing',
-          builder: (context, state) => const LandingScreen(),
-          // Introductory page showcasing featured properties before login
         ),
 
         // AUTHENTICATED USER ROUTES - Main App Routes
@@ -477,17 +479,17 @@ class AppRouter {
 
     return GoRouter(
       navigatorKey: rootNavigatorKey,
-      initialLocation: '/',
+      initialLocation: authProvider.isAuthenticated ? '/home' : '/',
       debugLogDiagnostics: true,
       routes: [
-        // Add the shell route for main navigation structure
+        // Create the shell route for tabbed navigation (used by the main app screens)
         _createShellRoute(),
 
         // Keep your existing routes for non-tabbed screens
         GoRoute(
           path: '/',
           name: 'splash',
-          builder: (context, state) => const AuthWrapper(),
+          builder: (context, state) => const SplashScreen(),
         ),
         GoRoute(
           path: '/login',
@@ -567,11 +569,6 @@ class AppRouter {
           path: '/profile/support',
           name: 'support',
           builder: (context, state) => const SupportScreen(),
-        ),
-        GoRoute(
-          path: '/notifications',
-          name: 'notifications',
-          builder: (context, state) => const NotificationsScreen(),
         ),
         GoRoute(
           path: '/property/add',
@@ -726,108 +723,51 @@ class AppRouter {
     );
   }
 
-  // Add this function to create StatefulShellRoutes with proper navigation control
+  /// Create a stateful shell route for tabbed navigation
   static StatefulShellRoute _createShellRoute() {
     return StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) {
+        // Get the current path and index
+        final currentPath = GoRouterState.of(context).uri.path;
+        final activeIndex = navigationShell.currentIndex;
+
+        // Get authentication status
+        final authProvider = Provider.of<AuthProvider>(context, listen: false);
+        final isAuthenticated = authProvider.isAuthenticated;
+        final isCheckingAuth = authProvider.isCheckingAuth;
+        final userId = authProvider.user?.uid ?? 'guest';
+
+        // Check if user is admin
+        final isAdmin = authProvider.user != null
+            ? AdminService.isUserAdmin(authProvider.user)
+            : false;
+
+        // Debug logging for shell navigation
+        DebugLogger.info(
+            'NAVBAR DEBUG: Building navigation shell with index: $activeIndex, ' +
+                'Auth state: ${isAuthenticated ? "Authenticated" : "Unauthenticated"}, ' +
+                'Checking Auth: $isCheckingAuth, ' +
+                'Current path: $currentPath');
+
+        // Return the stateful shell with proper navigation
         return Scaffold(
           body: navigationShell,
           bottomNavigationBar: Consumer<AuthProvider>(
             builder: (context, authProvider, _) {
-              // Use synchronous check for immediate UI decisions
-              final isAdmin = authProvider.user != null &&
-                  AdminService.isUserAdmin(authProvider.user);
-              final userId = authProvider.user?.uid ?? 'guest';
+              // Log navbar construction
+              DebugLogger.info(
+                  'NAVBAR DEBUG: Building navbar for path: $currentPath, ' +
+                      'User: $userId, isAdmin: $isAdmin');
 
-              final List<NavigationDestination> destinations = [
-                const NavigationDestination(
-                  icon: Icon(Icons.home_outlined),
-                  selectedIcon: Icon(Icons.home),
-                  label: 'Home',
-                ),
-                const NavigationDestination(
-                  icon: Icon(Icons.search_outlined),
-                  selectedIcon: Icon(Icons.search),
-                  label: 'Search',
-                ),
-                if (isAdmin)
-                  const NavigationDestination(
-                    icon: Icon(Icons.add_circle_outline),
-                    selectedIcon: Icon(Icons.add_circle),
-                    label: 'Post',
-                  ),
-                const NavigationDestination(
-                  icon: Icon(Icons.favorite_border_outlined),
-                  selectedIcon: Icon(Icons.favorite),
-                  label: 'Favorites',
-                ),
-                const NavigationDestination(
-                  icon: Icon(Icons.person_outline),
-                  selectedIcon: Icon(Icons.person),
-                  label: 'Profile',
-                ),
-              ];
-
-              // Ensure the selectedIndex is valid for the current destinations array
-              int safeIndex = navigationShell.currentIndex;
-              if (safeIndex >= destinations.length) {
-                safeIndex = 0; // Default to home tab if index is out of bounds
-              }
-
-              return NavigationBar(
-                selectedIndex: safeIndex,
-                destinations: destinations,
+              // Always show navbar
+              return BottomNavigationBarWithPersistence(
+                isAdmin: isAdmin,
+                userId: userId,
+                currentPath: currentPath,
                 onDestinationSelected: (index) {
-                  final currentRoute = state.uri.path;
-                  String targetRoute;
-                  String tabName;
-
-                  if (index == 0) {
-                    targetRoute = '/home';
-                    tabName = 'Home';
-                  } else if (index == 1) {
-                    targetRoute = '/search';
-                    tabName = 'Search';
-                  } else if (index == 2) {
-                    if (isAdmin) {
-                      // Use property/add instead of property/upload for the admin route
-                      // This fixed route uses AdminWrapper properly
-                      targetRoute = '/property/add';
-                      tabName = 'Post';
-                    } else {
-                      targetRoute = '/favorites';
-                      tabName = 'Favorites';
-                    }
-                  } else if (index == 3) {
-                    if (isAdmin) {
-                      targetRoute = '/favorites';
-                      tabName = 'Favorites';
-                    } else {
-                      targetRoute = '/profile';
-                      tabName = 'Profile';
-                    }
-                  } else if (index == 4) {
-                    if (isAdmin) {
-                      targetRoute = '/profile';
-                      tabName = 'Profile';
-                    } else {
-                      targetRoute = '/home';
-                      tabName = 'Home';
-                    }
-                  } else {
-                    targetRoute = '/home';
-                    tabName = 'Home';
-                  }
-
-                  DebugLogger.navClick(currentRoute, targetRoute, params: {
-                    'tabIndex': index,
-                    'tabName': tabName,
-                    'isAdmin': isAdmin,
-                    'userId': userId
-                  });
-
-                  // Use simple context.go() for direct navigation without shell
-                  context.go(targetRoute);
+                  // The direct branch navigation is the most reliable approach
+                  _navigateToTabIndex(context, navigationShell, index, isAdmin,
+                      userId, currentPath);
                 },
               );
             },
@@ -856,17 +796,7 @@ class AppRouter {
             ),
           ],
         ),
-        // Post branch (admin only) - This will be skipped for non-admin users
-        StatefulShellBranch(
-          routes: [
-            GoRoute(
-              path: '/property/upload',
-              builder: (context, state) =>
-                  const PropertyUploadScreen(showNavBar: false),
-            ),
-          ],
-        ),
-        // Favorites branch
+        // Favorites branch (or Admin-only Post branch depending on user role)
         StatefulShellBranch(
           routes: [
             GoRoute(
@@ -886,16 +816,170 @@ class AppRouter {
             ),
           ],
         ),
+        // Admin routes branch
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/property/upload',
+              builder: (context, state) =>
+                  const PropertyUploadScreen(showNavBar: false),
+            ),
+          ],
+        ),
         // Notifications branch
         StatefulShellBranch(
           routes: [
             GoRoute(
               path: '/notifications',
-              builder: (context, state) => const NotificationsScreen(),
+              name: 'notifications',
+              builder: (context, state) =>
+                  const NotificationsScreen(showNavBar: false),
             ),
           ],
         ),
       ],
+    );
+  }
+
+  // Helper method to navigate to the correct branch based on tab index
+  static void _navigateToTabIndex(
+      BuildContext context,
+      StatefulNavigationShell navigationShell,
+      int index,
+      bool isAdmin,
+      String userId,
+      String currentPath) {
+    // Determine which branch to navigate to based on user role and tab index
+    int branchIndex;
+    String tabName = "Unknown";
+
+    if (!isAdmin) {
+      // Normal user navigation
+      switch (index) {
+        case 0: // Home
+          branchIndex = 0;
+          tabName = "Home";
+          break;
+        case 1: // Search
+          branchIndex = 1;
+          tabName = "Search";
+          break;
+        case 2: // Favorites
+          branchIndex = 2;
+          tabName = "Favorites";
+          break;
+        case 3: // Profile
+          branchIndex = 3;
+          tabName = "Profile";
+          break;
+        default:
+          branchIndex = 0;
+          tabName = "Home";
+      }
+    } else {
+      // Admin user navigation
+      switch (index) {
+        case 0: // Home
+          branchIndex = 0;
+          tabName = "Home";
+          break;
+        case 1: // Search
+          branchIndex = 1;
+          tabName = "Search";
+          break;
+        case 2: // Post (admin specific)
+          branchIndex = 4;
+          tabName = "Post";
+          break;
+        case 3: // Favorites
+          branchIndex = 2;
+          tabName = "Favorites";
+          break;
+        case 4: // Profile
+          branchIndex = 3;
+          tabName = "Profile";
+          break;
+        default:
+          branchIndex = 0;
+          tabName = "Home";
+      }
+    }
+
+    // Navigate to the selected branch
+    navigationShell.goBranch(branchIndex);
+
+    // Log navigation for debugging
+    DebugLogger.info('NAVBAR DEBUG: Tab clicked - index: $index, ' +
+        'from: $currentPath, to branch: $branchIndex, ' +
+        'tabName: $tabName, isAdmin: $isAdmin, userId: $userId');
+  }
+
+  // Add new widget for bottom navigation bar with persistence
+  static Widget BottomNavigationBarWithPersistence({
+    required bool isAdmin,
+    required String userId,
+    required String currentPath,
+    required Function(int) onDestinationSelected,
+  }) {
+    final List<NavigationDestination> destinations = [
+      const NavigationDestination(
+        icon: Icon(Icons.home_outlined),
+        selectedIcon: Icon(Icons.home),
+        label: 'Home',
+      ),
+      const NavigationDestination(
+        icon: Icon(Icons.search_outlined),
+        selectedIcon: Icon(Icons.search),
+        label: 'Search',
+      ),
+      if (isAdmin)
+        const NavigationDestination(
+          icon: Icon(Icons.add_circle_outline),
+          selectedIcon: Icon(Icons.add_circle),
+          label: 'Post',
+        ),
+      const NavigationDestination(
+        icon: Icon(Icons.favorite_border_outlined),
+        selectedIcon: Icon(Icons.favorite),
+        label: 'Favorites',
+      ),
+      const NavigationDestination(
+        icon: Icon(Icons.person_outline),
+        selectedIcon: Icon(Icons.person),
+        label: 'Profile',
+      ),
+    ];
+
+    // Determine selected index based on current path - important for consistent highlighting
+    int selectedIndex = 0; // Default to Home
+
+    if (currentPath.startsWith('/search')) {
+      selectedIndex = 1;
+    } else if (currentPath.startsWith('/property/upload') ||
+        currentPath.startsWith('/property/add')) {
+      selectedIndex = isAdmin ? 2 : 0; // Only valid for admins
+    } else if (currentPath.startsWith('/favorites')) {
+      selectedIndex = isAdmin ? 3 : 2;
+    } else if (currentPath.startsWith('/profile')) {
+      selectedIndex = isAdmin ? 4 : 3;
+    }
+
+    // Ensure index is within valid range
+    if (selectedIndex >= destinations.length) {
+      selectedIndex = 0; // Default to home if index out of bounds
+    }
+
+    // Log navbar rendering with its complete state
+    DebugLogger.info('NAVBAR DEBUG: Rendering navbar - ' +
+        'path: $currentPath, selectedIndex: $selectedIndex, ' +
+        'isAdmin: $isAdmin, userId: $userId, ' +
+        'destinations count: ${destinations.length}');
+
+    return NavigationBar(
+      selectedIndex: selectedIndex,
+      destinations: destinations,
+      onDestinationSelected: onDestinationSelected,
+      labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
     );
   }
 

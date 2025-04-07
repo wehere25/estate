@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Real State</string>
+    <string name="app_name">Heaven Properties</string>
+    <string name="launcher_label">Heaven Properties</string>
 </resources>

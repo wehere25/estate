@@ -1,8 +1,13 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import '../utils/debug_logger.dart';
+import '../../features/notifications/domain/services/notification_service.dart'
+    as domain;
 
 class NotificationService {
   final FirebaseMessaging _messaging = FirebaseMessaging.instance;
+  final domain.NotificationService _domainService =
+      domain.NotificationService();
 
   Future<void> initialize() async {
     // Request permission
@@ -17,10 +22,13 @@ class NotificationService {
     String? token = await _messaging.getToken();
     debugPrint('FCM Token: $token');
 
+    // Initialize domain service
+    await _domainService.initialize();
+
     // Handle foreground messages
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       debugPrint('Received foreground message: ${message.notification?.title}');
-      // Show local notification here if needed
+      // The domain service will handle showing local notifications
     });
 
     // Handle background messages
@@ -28,8 +36,9 @@ class NotificationService {
 
     // Handle when app is opened from a notification
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      debugPrint('App opened from notification: ${message.notification?.title}');
-      // Handle navigation here
+      debugPrint(
+          'App opened from notification: ${message.notification?.title}');
+      // The domain service will handle navigation
     });
   }
 

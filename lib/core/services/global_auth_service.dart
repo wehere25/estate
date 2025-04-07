@@ -11,162 +11,152 @@ class GlobalAuthService {
     return _instance;
   }
 
-  GlobalAuthService._internal();
+  GlobalAuthService._internal() {
+    // Initialize immediately on creation
+    _quickInit();
+  }
 
   AuthProvider? _authProvider;
   bool _isEmergencyMode = false;
   bool _isInitialized = false;
+  bool _authCheckInProgress = false;
+  bool _cachedAuthStatus = false;
 
   /// Flag to track if service is fully initialized
   bool get isInitialized => _isInitialized;
 
-  /// Initialize the authentication service
+  /// Quick initialization to read cached values - this runs immediately on app start
+  void _quickInit() async {
+    try {
+      DebugLogger.info(
+          'NAVBAR DEBUG: GlobalAuthService - Starting _quickInit()');
+      final prefs = await SharedPreferences.getInstance();
+      _cachedAuthStatus = prefs.getBool('auth_user_cached') ?? false;
+      if (_cachedAuthStatus) {
+        DebugLogger.info(
+            'NAVBAR DEBUG: GlobalAuthService - Quick init found cached auth status: true');
+
+        // Immediately create auth provider with cached status
+        // This ensures we don't show login screen at all
+        _authProvider = AuthProvider(initialAuthStatus: true);
+        _isInitialized = true;
+        DebugLogger.info(
+            'NAVBAR DEBUG: GlobalAuthService - Created AuthProvider with initialAuthStatus=true');
+      } else {
+        DebugLogger.info(
+            'NAVBAR DEBUG: GlobalAuthService - No cached auth status found, will do full check');
+      }
+    } catch (e) {
+      DebugLogger.error(
+          'NAVBAR DEBUG: GlobalAuthService - Quick init error', e);
+    }
+  }
+
+  /// Initialize auth service and check previous auth state
   Future<void> initialize() async {
-    NavigationLogger.log(
-      NavigationEventType.providerAccess,
-      'STARTING GlobalAuthService initialization',
-    );
+    DebugLogger.info(
+        'NAVBAR DEBUG: GlobalAuthService - Initializing GlobalAuthService');
 
     if (_isInitialized) {
-      DebugLogger.info('GlobalAuthService already initialized, skipping');
+      DebugLogger.info(
+          'NAVBAR DEBUG: GlobalAuthService - Already initialized, skipping');
       return;
     }
 
     try {
-      DebugLogger.info('Creating new AuthProvider instance');
-      _authProvider = AuthProvider();
+      // Set auth status checking flag to prevent duplicate checks
+      _authCheckInProgress = true;
 
+      // If auth provider already created by _quickInit, just use it
       if (_authProvider == null) {
-        DebugLogger.error('CRITICAL: _authProvider is null after assignment');
-        await createEmergencyAuthProvider();
-        return;
-      } else {
-        DebugLogger.info('AuthProvider instance created successfully');
-      }
-
-      // Pre-check if we were previously authenticated to improve user experience
-      final prefs = await SharedPreferences.getInstance();
-      final wasAuthenticated = prefs.getBool('auth_user_cached') ?? false;
-
-      if (wasAuthenticated) {
         DebugLogger.info(
-            'Previous authentication session detected - preparing UI early');
+            'NAVBAR DEBUG: GlobalAuthService - Creating new AuthProvider with cachedAuthStatus=$_cachedAuthStatus');
+        // Create auth provider with cached status
+        _authProvider = AuthProvider(initialAuthStatus: _cachedAuthStatus);
+      } else {
+        DebugLogger.info(
+            'NAVBAR DEBUG: GlobalAuthService - Using existing AuthProvider from _quickInit');
       }
 
-      // Check auth status and wait for it to complete
-      DebugLogger.info('Checking auth status...');
-      await _authProvider!.checkAuthStatus();
+      // Optimization: Skip full auth check for returning users
+      if (_cachedAuthStatus) {
+        _isInitialized = true;
+        _authCheckInProgress = false;
+        DebugLogger.info(
+            'NAVBAR DEBUG: GlobalAuthService - Initialized with cached status, skipping full check');
+        return;
+      }
 
-      final status = _authProvider?.status?.toString() ?? 'UNKNOWN';
-      final isAuth = _authProvider?.isAuthenticated.toString() ?? 'UNKNOWN';
+      // For new sessions, do a full check
+      if (_authProvider != null) {
+        DebugLogger.info(
+            'NAVBAR DEBUG: GlobalAuthService - Doing full auth check');
+        // Priority loading - get remember me value ASAP
+        final rememberMe = await _authProvider!.loadRememberMePreference();
+        _authProvider!.setRememberMe(rememberMe);
+        DebugLogger.info(
+            'NAVBAR DEBUG: GlobalAuthService - Calling checkAuthStatus()');
+        await _authProvider!.checkAuthStatus();
+        DebugLogger.info(
+            'NAVBAR DEBUG: GlobalAuthService - checkAuthStatus() completed, authenticated=${_authProvider!.isAuthenticated}');
+      }
 
-      DebugLogger.info(
-          'Auth check complete: Status=$status, isAuthenticated=$isAuth');
-
-      NavigationLogger.log(
-        NavigationEventType.providerAccess,
-        'GlobalAuthService initialization COMPLETED',
-        data: {'status': status, 'isAuthenticated': isAuth},
-      );
-
+      _authCheckInProgress = false;
       _isInitialized = true;
+      DebugLogger.info(
+          'NAVBAR DEBUG: GlobalAuthService - Initialization complete');
     } catch (e) {
-      DebugLogger.error('ERROR initializing GlobalAuthService', e);
-      await createEmergencyAuthProvider();
+      _authCheckInProgress = false;
+      DebugLogger.error(
+          'NAVBAR DEBUG: GlobalAuthService - Failed to initialize', e);
+      createEmergencyAuthProvider();
+      rethrow;
     }
   }
 
   /// Creates an emergency auth provider when normal initialization fails
   Future<void> createEmergencyAuthProvider() async {
     try {
-      DebugLogger.info('📢 Creating EMERGENCY AuthProvider');
-      _authProvider = AuthProvider();
+      DebugLogger.info('Creating emergency AuthProvider');
+      _authProvider = AuthProvider(initialAuthStatus: _cachedAuthStatus);
       _isEmergencyMode = true;
-
-      // Also try to restore auth session in emergency mode
-      await _authProvider?.checkAuthStatus();
-
-      DebugLogger.info('✅ Emergency AuthProvider created successfully');
+      DebugLogger.info('Emergency AuthProvider created successfully');
     } catch (e) {
-      DebugLogger.error('💥 FATAL: Failed to create emergency AuthProvider', e);
-      // At this point, there's not much else we can do
-    }
-  }
-
-  /// Attempt to sign in with email and password
-  Future<bool> signIn(String email, String password,
-      {bool rememberMe = false}) async {
-    try {
-      if (_authProvider == null) {
-        DebugLogger.error('Attempting to sign in with null auth provider');
-        await createEmergencyAuthProvider();
-      }
-
-      final result =
-          await _authProvider!.signIn(email, password, rememberMe: rememberMe);
-
-      // Extra step to cache auth status in SharedPreferences for faster startup
-      if (result && rememberMe) {
-        try {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setBool('auth_user_cached', true);
-          DebugLogger.info(
-              '📝 Cached authentication status for faster startup');
-        } catch (e) {
-          DebugLogger.error('Failed to cache auth status', e);
-        }
-      }
-
-      return _authProvider!.isAuthenticated;
-    } catch (e) {
-      DebugLogger.error('GlobalAuthService: Sign in failed', e);
-      rethrow;
-    }
-  }
-
-  /// Sign out user
-  Future<void> signOut() async {
-    try {
-      if (_authProvider == null) {
-        DebugLogger.error('Attempting to sign out with null auth provider');
-        await createEmergencyAuthProvider();
-        return;
-      }
-
-      // Clear cached authentication status first
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setBool('auth_user_cached', false);
-        DebugLogger.info('📝 Cleared cached authentication status');
-      } catch (e) {
-        DebugLogger.error('Failed to clear cached auth status', e);
-      }
-
-      await _authProvider!.signOut();
-    } catch (e) {
-      DebugLogger.error('GlobalAuthService: Sign out failed', e);
-      rethrow;
+      DebugLogger.error('FATAL: Failed to create emergency AuthProvider', e);
     }
   }
 
   /// Check if a user is already authenticated
   Future<bool> checkIfAuthenticated() async {
-    // First check SharedPreferences for faster response
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final cachedAuthStatus = prefs.getBool('auth_user_cached') ?? false;
+    DebugLogger.info(
+        'NAVBAR DEBUG: GlobalAuthService - checkIfAuthenticated() called');
 
-      // If we have a cached status, return quickly for better UX
-      if (cachedAuthStatus) {
-        DebugLogger.info('Found cached authentication status: true');
-      }
-    } catch (e) {
-      DebugLogger.error('Error checking cached auth status', e);
+    // Fast path: if we have cached status, return true immediately
+    if (_cachedAuthStatus) {
+      DebugLogger.info(
+          'NAVBAR DEBUG: GlobalAuthService - Using cached auth status (true)');
+      return true;
     }
 
-    // Then do the full check with the auth provider
+    // If auth check is already in progress, don't start another one
+    if (_authCheckInProgress) {
+      DebugLogger.info(
+          'NAVBAR DEBUG: GlobalAuthService - Auth check in progress, waiting...');
+      while (_authCheckInProgress) {
+        await Future.delayed(const Duration(milliseconds: 50));
+      }
+      DebugLogger.info(
+          'NAVBAR DEBUG: GlobalAuthService - Auth check completed while waiting, result: ${isAuthenticated}');
+      return isAuthenticated;
+    }
+
+    // If not initialized yet, do it now
     if (_authProvider == null) {
+      DebugLogger.info(
+          'NAVBAR DEBUG: GlobalAuthService - AuthProvider not initialized, calling initialize()');
       await initialize();
+      DebugLogger.info(
+          'NAVBAR DEBUG: GlobalAuthService - initialize() completed, authenticated=${isAuthenticated}');
     }
 
     return isAuthenticated;
@@ -174,13 +164,20 @@ class GlobalAuthService {
 
   // Getters for auth status with null safety
   bool get isAuthenticated {
+    if (_cachedAuthStatus) {
+      DebugLogger.info(
+          'NAVBAR DEBUG: GlobalAuthService - isAuthenticated returning true due to _cachedAuthStatus');
+      return true;
+    }
     if (_authProvider == null) {
-      DebugLogger.error('Accessing isAuthenticated with null auth provider');
+      DebugLogger.info(
+          'NAVBAR DEBUG: GlobalAuthService - isAuthenticated returning false due to null _authProvider');
       return false;
     }
 
     final result = _authProvider!.isAuthenticated;
-    DebugLogger.info('GlobalAuthService.isAuthenticated = $result');
+    DebugLogger.info(
+        'NAVBAR DEBUG: GlobalAuthService - isAuthenticated returning ${result} from _authProvider');
     return result;
   }
 
@@ -205,11 +202,87 @@ class GlobalAuthService {
   AuthProvider get authProvider {
     if (_authProvider == null) {
       DebugLogger.error(
-          'CRITICAL: Accessing null _authProvider, creating emergency instance');
+          'Accessing null _authProvider, creating emergency instance');
       createEmergencyAuthProvider();
     }
 
-    DebugLogger.info('GlobalAuthService.authProvider accessed successfully');
     return _authProvider!;
+  }
+
+  /// Attempt to sign in with email and password
+  Future<bool> signIn(
+      {required String email,
+      required String password,
+      bool rememberMe = false}) async {
+    try {
+      DebugLogger.info(
+          'NAVBAR DEBUG: GlobalAuthService - signIn called for email: $email, rememberMe: $rememberMe');
+
+      if (_authProvider == null) {
+        DebugLogger.info(
+            'NAVBAR DEBUG: GlobalAuthService - Creating emergency AuthProvider for signIn');
+        await createEmergencyAuthProvider();
+      }
+
+      // Use positional parameters to match AuthProvider signature
+      final result =
+          await _authProvider!.signIn(email, password, rememberMe: rememberMe);
+
+      // Cache auth status for faster startup
+      if (result && rememberMe) {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setBool('auth_user_cached', true);
+          _cachedAuthStatus = true;
+          DebugLogger.info(
+              'NAVBAR DEBUG: GlobalAuthService - Cached authentication status for faster startup');
+        } catch (e) {
+          DebugLogger.error(
+              'NAVBAR DEBUG: GlobalAuthService - Failed to cache auth status',
+              e);
+        }
+      }
+
+      DebugLogger.info(
+          'NAVBAR DEBUG: GlobalAuthService - signIn result: ${_authProvider!.isAuthenticated}');
+      return _authProvider!.isAuthenticated;
+    } catch (e) {
+      DebugLogger.error('NAVBAR DEBUG: GlobalAuthService - Sign in failed', e);
+      rethrow;
+    }
+  }
+
+  /// Sign out user
+  Future<void> signOut() async {
+    try {
+      DebugLogger.info('NAVBAR DEBUG: GlobalAuthService - Starting signOut()');
+
+      if (_authProvider == null) {
+        DebugLogger.info(
+            'NAVBAR DEBUG: GlobalAuthService - Creating emergency AuthProvider for signOut');
+        await createEmergencyAuthProvider();
+        return;
+      }
+
+      // Clear cached authentication status first
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('auth_user_cached', false);
+        _cachedAuthStatus = false;
+        DebugLogger.info(
+            'NAVBAR DEBUG: GlobalAuthService - Cleared cached authentication status');
+      } catch (e) {
+        DebugLogger.error(
+            'NAVBAR DEBUG: GlobalAuthService - Failed to clear cached auth status',
+            e);
+      }
+
+      await _authProvider!.signOut();
+      DebugLogger.info(
+          'NAVBAR DEBUG: GlobalAuthService - signOut completed, authenticated=${_authProvider!.isAuthenticated}');
+    } catch (e) {
+      DebugLogger.error('NAVBAR DEBUG: GlobalAuthService - Sign out failed', e);
+      rethrow;
+    }
   }
 }

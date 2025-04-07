@@ -41,22 +41,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
-  Future<void> _handleRegister() async {
-    // Keep the existing validation checks
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
+  void _handleRegister() async {
+    // Hide keyboard
+    FocusScope.of(context).unfocus();
 
-    final email = _emailController.text.trim();
-    debugPrint('Attempting registration with email: "$email"');
-    
-    if (!_isValidEmail(email)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter a valid email address (e.g., name@example.com)'),
-          backgroundColor: Colors.red,
-        ),
-      );
+    // Validate input
+    if (!_formKey.currentState!.validate()) {
       return;
     }
 
@@ -70,58 +60,293 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
 
-    setState(() => _isLoading = true);
+    // Show loading indicator
+    setState(() {
+      _isLoading = true;
+    });
+
+    // Get authentication provider
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
     try {
-      try {
-        // Try the registration
-        await Provider.of<AuthProvider>(context, listen: false).register(
-          _nameController.text.trim(),
-          email,
-          _passwordController.text,
-        );
-      } catch (innerError) {
-        // Check for the PigeonUserDetails error
-        if (innerError.toString().contains('PigeonUserDetails')) {
-          debugPrint('PigeonUserDetails error encountered during registration, checking if successful anyway');
-          
-          // Check if the user is actually registered despite the error
-          final user = firebase_auth.FirebaseAuth.instance.currentUser;
-          if (user != null) {
-            debugPrint('Registration succeeded despite PigeonUserDetails error, user ID: ${user.uid}');
-            // Continue with successful flow
-          } else {
-            // No user registered, rethrow
-            rethrow;
-          }
-        } else {
-          // Not a PigeonUserDetails error, rethrow
-          rethrow;
+      // Register user
+      final success = await authProvider.register(
+        _nameController.text.trim(),
+        _emailController.text.trim(),
+        _passwordController.text,
+      );
+
+      // Very important: check if still mounted before proceeding
+      if (!mounted) return;
+
+      // Update loading state
+      setState(() {
+        _isLoading = false;
+      });
+
+      if (success) {
+        // Registration successful - show a prominent verification needed dialog
+        // Use Future.microtask to avoid context issues
+        Future.microtask(() {
+          if (!mounted) return;
+
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (ctx) => Dialog(
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.mark_email_read,
+                      size: 56,
+                      color: Colors.green,
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Verify Your Email',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'We\'ve sent a verification link to your email address. Please check your inbox and verify your account before signing in.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 16),
+                    ),
+                    const SizedBox(height: 24),
+                    ElevatedButton(
+                      onPressed: () {
+                        Navigator.of(ctx).pop();
+                        // Navigate to login screen with needVerification parameter
+                        Future.microtask(() {
+                          if (mounted)
+                            context.go('/login?needVerification=true');
+                        });
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.lightColorScheme.primary,
+                        minimumSize: const Size(double.infinity, 50),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: const Text(
+                        'GO TO LOGIN',
+                        style: TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        });
+      } else {
+        // Registration failed with error
+        if (!mounted) return;
+
+        // Handle specific error types
+        final error = authProvider.error;
+        if (error != null && error.contains('permission-denied')) {
+          // Show the same verification dialog for permission-denied errors
+          // since the account was likely created successfully
+          Future.microtask(() {
+            if (!mounted) return;
+
+            showDialog(
+              context: context,
+              barrierDismissible: false,
+              builder: (ctx) => Dialog(
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16)),
+                child: Padding(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.mark_email_read,
+                        size: 56,
+                        color: Colors.green,
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Verify Your Email',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'We\'ve sent a verification link to your email address. Please check your inbox and verify your account before signing in.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 16),
+                      ),
+                      const SizedBox(height: 24),
+                      ElevatedButton(
+                        onPressed: () {
+                          Navigator.of(ctx).pop();
+                          // Navigate to login screen with needVerification parameter
+                          Future.microtask(() {
+                            if (mounted)
+                              context.go('/login?needVerification=true');
+                          });
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.lightColorScheme.primary,
+                          minimumSize: const Size(double.infinity, 50),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        child: const Text(
+                          'GO TO LOGIN',
+                          style: TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          });
+          return;
         }
+
+        // For "email-already-in-use" errors, show a more helpful message
+        if (error != null && error.contains('email-already-in-use')) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                  'An account with this email already exists. Try signing in instead.'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 5),
+              action: SnackBarAction(
+                label: 'SIGN IN',
+                onPressed: () {
+                  if (mounted) context.go('/login');
+                },
+              ),
+            ),
+          );
+          return;
+        }
+
+        // Show the error message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(error ?? 'Registration failed'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
-
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Account created successfully!'),
-          backgroundColor: Colors.green,
-        ),
-      );
-
-      context.go('/home');
     } catch (e) {
+      // Unexpected error
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Registration failed: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
+      // Make sure to update loading state
+      setState(() {
+        _isLoading = false;
+      });
+
+      String errorMessage = e.toString();
+      if (errorMessage.contains('permission-denied')) {
+        // Show the same verification dialog for permission-denied errors in catch block
+        Future.microtask(() {
+          if (!mounted) return;
+
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (ctx) => Dialog(
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.mark_email_read,
+                      size: 56,
+                      color: Colors.green,
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Verify Your Email',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'We\'ve sent a verification link to your email address. Please check your inbox and verify your account before signing in.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 16),
+                    ),
+                    const SizedBox(height: 24),
+                    ElevatedButton(
+                      onPressed: () {
+                        Navigator.of(ctx).pop();
+                        // Navigate to login screen with needVerification parameter
+                        Future.microtask(() {
+                          if (mounted)
+                            context.go('/login?needVerification=true');
+                        });
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.lightColorScheme.primary,
+                        minimumSize: const Size(double.infinity, 50),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: const Text(
+                        'GO TO LOGIN',
+                        style: TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        });
+      } else if (errorMessage.contains('email-already-in-use')) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                'An account with this email already exists. Try signing in instead.'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 5),
+            action: SnackBarAction(
+              label: 'SIGN IN',
+              onPressed: () {
+                if (mounted) context.go('/login');
+              },
+            ),
+          ),
+        );
+      } else {
+        // Other unexpected error
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('An error occurred: $errorMessage'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
   }
@@ -176,7 +401,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     const SizedBox(height: 16),
-
                     const Text(
                       'Create Account',
                       textAlign: TextAlign.center,
@@ -186,9 +410,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         color: Colors.white,
                       ),
                     ),
-
                     const SizedBox(height: 8),
-
                     const Text(
                       'Sign up to get started',
                       textAlign: TextAlign.center,
@@ -197,9 +419,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         color: Colors.white70,
                       ),
                     ),
-
                     const SizedBox(height: 32),
-
                     Card(
                       elevation: 4,
                       shape: RoundedRectangleBorder(
@@ -223,9 +443,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                   return null;
                                 },
                               ),
-
                               const SizedBox(height: 16),
-
                               AppTextField(
                                 controller: _emailController,
                                 hintText: 'Email',
@@ -235,7 +453,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                   if (value == null || value.isEmpty) {
                                     return 'Please enter your email';
                                   }
-                                  
+
                                   value = value.trim();
                                   if (!value.contains('@')) {
                                     return 'Email must include the @ symbol';
@@ -249,9 +467,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                   return null;
                                 },
                               ),
-
                               const SizedBox(height: 16),
-
                               AppTextField(
                                 controller: _passwordController,
                                 hintText: 'Password',
@@ -259,7 +475,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 obscureText: _obscurePassword,
                                 suffixIcon: IconButton(
                                   icon: Icon(
-                                    _obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                                    _obscurePassword
+                                        ? Icons.visibility_outlined
+                                        : Icons.visibility_off_outlined,
                                   ),
                                   onPressed: () {
                                     setState(() {
@@ -277,9 +495,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                   return null;
                                 },
                               ),
-
                               const SizedBox(height: 16),
-
                               AppTextField(
                                 controller: _confirmPasswordController,
                                 hintText: 'Confirm Password',
@@ -287,11 +503,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 obscureText: _obscureConfirmPassword,
                                 suffixIcon: IconButton(
                                   icon: Icon(
-                                    _obscureConfirmPassword ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                                    _obscureConfirmPassword
+                                        ? Icons.visibility_outlined
+                                        : Icons.visibility_off_outlined,
                                   ),
                                   onPressed: () {
                                     setState(() {
-                                      _obscureConfirmPassword = !_obscureConfirmPassword;
+                                      _obscureConfirmPassword =
+                                          !_obscureConfirmPassword;
                                     });
                                   },
                                 ),
@@ -305,9 +524,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                   return null;
                                 },
                               ),
-
                               const SizedBox(height: 16),
-
                               Row(
                                 children: [
                                   Checkbox(
@@ -328,12 +545,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                       child: RichText(
                                         text: TextSpan(
                                           text: 'I agree to the ',
-                                          style: TextStyle(color: Colors.grey[700]),
+                                          style: TextStyle(
+                                              color: Colors.grey[700]),
                                           children: [
                                             TextSpan(
                                               text: 'Terms and Conditions',
                                               style: TextStyle(
-                                                color: AppColors.lightColorScheme.primary,
+                                                color: AppColors
+                                                    .lightColorScheme.primary,
                                                 fontWeight: FontWeight.bold,
                                               ),
                                             ),
@@ -344,14 +563,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                   ),
                                 ],
                               ),
-
                               const SizedBox(height: 24),
-
                               ElevatedButton(
                                 onPressed: _isLoading ? null : _handleRegister,
                                 style: ElevatedButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(vertical: 16),
-                                  backgroundColor: AppColors.lightColorScheme.primary,
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 16),
+                                  backgroundColor:
+                                      AppColors.lightColorScheme.primary,
                                   foregroundColor: Colors.white,
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(8),
@@ -372,9 +591,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         ),
                       ),
                     ),
-
                     const Spacer(),
-
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [

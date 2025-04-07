@@ -35,8 +35,8 @@ class NotificationBadge extends StatelessWidget {
               ),
               tooltip: 'Notifications',
               onPressed: () {
-                // Navigate to notifications screen
-                context.push('/notifications');
+                // Navigate to notifications screen using go_router
+                context.go('/notifications');
               },
             ),
             if (shouldShowBadge)

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'dev_utils.dart';
 
 class ImageUtils {
@@ -23,26 +24,22 @@ class ImageUtils {
 
     // Check if the URL starts with 'http' or 'https' for network images
     if (processedUrl.startsWith('http')) {
-      return Image.network(
-        processedUrl,
+      return CachedNetworkImage(
+        imageUrl: processedUrl,
         fit: fit,
         width: width,
         height: height,
-        loadingBuilder: (context, child, loadingProgress) {
-          if (loadingProgress == null) return child;
-          return Center(
-            child: CircularProgressIndicator(
-              value: loadingProgress.expectedTotalBytes != null
-                  ? loadingProgress.cumulativeBytesLoaded /
-                      loadingProgress.expectedTotalBytes!
-                  : null,
-            ),
-          );
-        },
-        errorBuilder: (_, error, stackTrace) {
-          debugPrint('Error loading image from $processedUrl: $error');
+        placeholder: (context, url) => Center(
+          child: CircularProgressIndicator(),
+        ),
+        errorWidget: (context, url, error) {
+          debugPrint('Error loading image from $url: $error');
           return errorPlaceholder;
         },
+        // Enable disk caching with longer duration
+        cacheManager: null, // Use default cache manager
+        fadeOutDuration: const Duration(milliseconds: 300),
+        fadeInDuration: const Duration(milliseconds: 300),
       );
     }
 
@@ -50,8 +47,9 @@ class ImageUtils {
     else if (processedUrl.startsWith('file:/') ||
         processedUrl.startsWith('/data/')) {
       try {
-        return Image.network(
-          'https://via.placeholder.com/800x600?text=Local+File', // Use placeholder for file URLs
+        return CachedNetworkImage(
+          imageUrl:
+              'https://via.placeholder.com/800x600?text=Local+File', // Use placeholder for file URLs
           fit: fit,
           width: width,
           height: height,

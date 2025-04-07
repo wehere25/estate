@@ -8,7 +8,8 @@ import 'package:flutter_map_marker_cluster/flutter_map_marker_cluster.dart';
 import '../../../../core/utils/debug_logger.dart';
 import '../../../../features/auth/domain/providers/auth_provider.dart';
 import '../../../../features/auth/domain/services/admin_service.dart';
-import '../../../../core/navigation/app_navigation.dart'; // Updated import
+import '../../../../core/navigation/app_bottom_nav.dart'; // Updated import
+import '../../../../core/navigation/app_scaffold.dart'; // Add import for AppScaffold
 
 import '/core/constants/app_colors.dart';
 import '/features/property/domain/models/property_model.dart';
@@ -99,13 +100,22 @@ class _HomeScreenState extends State<HomeScreen>
   Widget build(BuildContext context) {
     debugPrint(
         'Building HomeScreen - Screen width: ${MediaQuery.of(context).size.width}');
+
+    // Add detailed debug info for navigation bar visibility
+    DebugLogger.info('NAVBAR DEBUG: HomeScreen.build - ' +
+        'showNavBar property: ${widget.showNavBar}, ' +
+        'screen width: ${MediaQuery.of(context).size.width}, ' +
+        'Authentication status: ${Provider.of<AuthProvider>(context).isAuthenticated}, ' +
+        'Checking Auth: ${Provider.of<AuthProvider>(context).isCheckingAuth}');
+
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     final theme = Theme.of(context);
-    // Use a simple Scaffold instead of AppScaffold when no nav bar is needed
+
+    // Use AppScaffold to ensure consistent nav bar behavior
     return AppScaffold(
-      currentIndex: _selectedIndex,
+      currentIndex: 0,
       showAppBar: false, // We'll handle our own app bar
-      showNavBar: widget.showNavBar, // Pass the showNavBar parameter
+      showNavBar: widget.showNavBar, // Only show navbar if requested
       body: Column(
         children: [
           // Enhanced header with gradient matching HTML design

@@ -92,61 +92,73 @@ class _AppShellState extends State<AppShell> {
             ),
           ];
 
-          return NavigationBar(
-            selectedIndex: widget.navigationShell.currentIndex,
-            destinations: destinations,
-            onDestinationSelected: (index) {
-              final currentRoute = GoRouterState.of(context).uri.path;
-              String targetRoute;
-              String tabName;
+          // Wrap NavigationBar with SlideTransition for smoother animations
+          return TweenAnimationBuilder<double>(
+            tween: Tween<double>(begin: 1.0, end: 0.0),
+            duration: const Duration(milliseconds: 400),
+            curve: Curves.easeOutCubic,
+            builder: (context, value, child) {
+              return Transform.translate(
+                offset: Offset(0, 80 * value),
+                child: child,
+              );
+            },
+            child: NavigationBar(
+              selectedIndex: widget.navigationShell.currentIndex,
+              destinations: destinations,
+              onDestinationSelected: (index) {
+                final currentRoute = GoRouterState.of(context).uri.path;
+                String targetRoute;
+                String tabName;
 
-              if (index == 0) {
-                targetRoute = '/home';
-                tabName = 'Home';
-              } else if (index == 1) {
-                targetRoute = '/search';
-                tabName = 'Search';
-              } else if (index == 2) {
-                if (isAdmin) {
-                  targetRoute = '/property/upload';
-                  tabName = 'Post';
-                } else {
-                  targetRoute = '/favorites';
-                  tabName = 'Favorites';
-                }
-              } else if (index == 3) {
-                if (isAdmin) {
-                  targetRoute = '/favorites';
-                  tabName = 'Favorites';
-                } else {
-                  targetRoute = '/profile';
-                  tabName = 'Profile';
-                }
-              } else if (index == 4) {
-                if (isAdmin) {
-                  targetRoute = '/profile';
-                  tabName = 'Profile';
+                if (index == 0) {
+                  targetRoute = '/home';
+                  tabName = 'Home';
+                } else if (index == 1) {
+                  targetRoute = '/search';
+                  tabName = 'Search';
+                } else if (index == 2) {
+                  if (isAdmin) {
+                    targetRoute = '/property/upload';
+                    tabName = 'Post';
+                  } else {
+                    targetRoute = '/favorites';
+                    tabName = 'Favorites';
+                  }
+                } else if (index == 3) {
+                  if (isAdmin) {
+                    targetRoute = '/favorites';
+                    tabName = 'Favorites';
+                  } else {
+                    targetRoute = '/profile';
+                    tabName = 'Profile';
+                  }
+                } else if (index == 4) {
+                  if (isAdmin) {
+                    targetRoute = '/profile';
+                    tabName = 'Profile';
+                  } else {
+                    targetRoute = '/home';
+                    tabName = 'Home';
+                  }
                 } else {
                   targetRoute = '/home';
                   tabName = 'Home';
                 }
-              } else {
-                targetRoute = '/home';
-                tabName = 'Home';
-              }
 
-              DebugLogger.navClick(currentRoute, targetRoute, params: {
-                'tabIndex': index,
-                'tabName': tabName,
-                'isAdmin': isAdmin,
-                'userId': userId
-              });
+                DebugLogger.navClick(currentRoute, targetRoute, params: {
+                  'tabIndex': index,
+                  'tabName': tabName,
+                  'isAdmin': isAdmin,
+                  'userId': userId
+                });
 
-              widget.navigationShell.goBranch(
-                index,
-                initialLocation: index == widget.navigationShell.currentIndex,
-              );
-            },
+                widget.navigationShell.goBranch(
+                  index,
+                  initialLocation: index == widget.navigationShell.currentIndex,
+                );
+              },
+            ),
           );
         },
       ),

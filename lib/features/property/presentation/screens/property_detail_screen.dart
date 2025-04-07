@@ -409,25 +409,22 @@ class _PropertyDetailScreenState extends State<PropertyDetailScreen>
             statusBarIconBrightness: Brightness.light,
           ),
           automaticallyImplyLeading: false, // Remove default back button
-          actions: [
-            // Back button with transparent background
-            Container(
-              margin: const EdgeInsets.only(left: 16),
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.3),
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: Colors.white.withOpacity(0.2),
-                  width: 1,
-                ),
-              ),
-              child: IconButton(
-                icon: const Icon(Icons.arrow_back, color: Colors.white),
-                onPressed: () => Navigator.of(context).pop(),
+          leading: Container(
+            margin: const EdgeInsets.only(left: 8, top: 2),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: Colors.white.withOpacity(0.3),
+                width: 1,
               ),
             ),
-            const Spacer(), // Push the next buttons to the right
-          ],
+            child: IconButton(
+              icon: const Icon(Icons.arrow_back, color: Colors.white, size: 20),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+          ),
+          actions: [], // Remove spacer and action buttons as they are now in the shared view
         ),
         body: _isLoading
             ? const Center(child: CircularProgressIndicator())

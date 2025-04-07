@@ -1,2 +1,7 @@
-#include? "Pods/Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"
 #include "Generated.xcconfig"
+#include? "Pods/Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"
+
+// Explicitly remove any -G flags that might be inherited
+OTHER_CFLAGS = ${inherited:/-G/}
+OTHER_LDFLAGS = ${inherited:/-G/}
+OTHER_SWIFT_FLAGS = ${inherited:/-G/}

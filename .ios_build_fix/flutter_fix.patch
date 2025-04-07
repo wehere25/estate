@@ -1,0 +1,13 @@
+diff --git a/packages/flutter_tools/bin/xcode_backend.sh b/packages/flutter_tools/bin/xcode_backend.sh
+index a1e5dd5..ebb3452 100755
+--- a/packages/flutter_tools/bin/xcode_backend.sh
++++ b/packages/flutter_tools/bin/xcode_backend.sh
+@@ -92,6 +92,9 @@ function xcode_backend_build() {
+   local target_path="$1"
+   local build_mode="$2"
+ 
++  # Remove -G flag from compiler flags for iOS 18.4 compatibility
++  export FLUTTER_OTHER_CFLAGS="${FLUTTER_OTHER_CFLAGS//-G/}"
++
+   # Use FLUTTER_BUILD_MODE if it's set, otherwise use the Xcode build configuration name
+   # to determine the appropriate Flutter build mode.

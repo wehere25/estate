@@ -5,7 +5,8 @@ import '/core/constants/app_colors.dart';
 import '/features/favorites/providers/favorites_provider.dart';
 import '/features/property/presentation/widgets/property_card.dart';
 import '../../../property/domain/models/property_model.dart';
-import '../../../../core/navigation/app_navigation.dart';
+import '../../../../core/navigation/app_bottom_nav.dart';
+import '../../../../core/navigation/app_scaffold.dart';
 
 class FavoritesScreen extends StatefulWidget {
   final bool showNavBar;
@@ -34,28 +35,44 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Add debug logging to track FavoritesScreen building and navbar visibility
+    debugPrint(
+        'NAVBAR DEBUG: FavoritesScreen building with showNavBar=${widget.showNavBar}');
+
     return AppScaffold(
-      currentIndex: 3, // Favorites is index 3 (or 2 for non-admin)
-      title: 'My Favorites',
-      showNavBar: widget.showNavBar, // Add this parameter
-      actions: [
-        // Add saved searches button
-        IconButton(
-          icon: const Icon(Icons.saved_search),
-          tooltip: 'Saved Searches',
-          onPressed: () => context.push('/saved_searches'),
+      currentIndex: 2, // Explicitly set index for Favorites
+      showNavBar: widget.showNavBar,
+      customAppBar: AppBar(
+        backgroundColor: AppColors.primaryColor,
+        elevation: 4,
+        title: const Text(
+          'Favorites',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
         ),
-        // Toggle view button
-        IconButton(
-          icon: Icon(_isGridView ? Icons.view_list : Icons.grid_view),
-          tooltip: _isGridView ? 'List View' : 'Grid View',
-          onPressed: () {
-            setState(() {
-              _isGridView = !_isGridView;
-            });
-          },
-        ),
-      ],
+        actions: [
+          // Add saved searches button
+          IconButton(
+            icon: const Icon(Icons.saved_search, color: Colors.white),
+            tooltip: 'Saved Searches',
+            onPressed: () => context.push('/saved_searches'),
+          ),
+          // Toggle view button
+          IconButton(
+            icon: Icon(_isGridView ? Icons.view_list : Icons.grid_view,
+                color: Colors.white),
+            tooltip: _isGridView ? 'List View' : 'Grid View',
+            onPressed: () {
+              setState(() {
+                _isGridView = !_isGridView;
+              });
+            },
+          ),
+        ],
+      ),
       body: Consumer<FavoritesProvider>(
         builder: (context, provider, _) {
           if (provider.isLoading) {

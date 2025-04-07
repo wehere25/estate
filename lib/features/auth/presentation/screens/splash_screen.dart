@@ -17,7 +17,8 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
+class _SplashScreenState extends State<SplashScreen>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
   late Animation<double> _scaleAnimation;
@@ -28,37 +29,55 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   @override
   void initState() {
     super.initState();
-    
+
+    // Check for cached auth status first - optimize startup flow
+    final globalAuthService = GlobalAuthService();
+    final isAuthenticated = globalAuthService.isAuthenticated;
+
+    // For previously authenticated users, immediately navigate to home
+    if (isAuthenticated && !globalAuthService.isLoading) {
+      DebugLogger.info(
+          "SplashScreen: User already authenticated, navigating immediately");
+      // Use a very short delay to ensure navigation works properly
+      Timer(const Duration(milliseconds: 50), () {
+        if (mounted) {
+          _navigationAttempted = true;
+          _navigateToHome();
+        }
+      });
+    }
+
     // Set up animations
     _controller = AnimationController(
-      duration: const Duration(seconds: 3), // Longer duration for smoother effect
+      duration:
+          const Duration(seconds: 3), // Longer duration for smoother effect
       vsync: this,
     );
-    
+
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _controller,
         curve: const Interval(0.0, 0.6, curve: Curves.easeIn),
       ),
     );
-    
+
     _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
       CurvedAnimation(
         parent: _controller,
         curve: const Interval(0.4, 0.8, curve: Curves.easeOutCubic),
       ),
     );
-    
+
     _slideAnimation = Tween<double>(begin: 50.0, end: 0.0).animate(
       CurvedAnimation(
         parent: _controller,
         curve: const Interval(0.4, 0.8, curve: Curves.easeOut),
       ),
     );
-    
+
     // Start animation
     _controller.forward();
-    
+
     // Check auth state after animations complete
     _controller.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
@@ -78,27 +97,28 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     Timer(const Duration(seconds: 8), () {
       if (mounted && !_timeoutOccurred) {
         _timeoutOccurred = true;
-        DebugLogger.error('Splash screen timeout occurred, navigating to login screen');
+        DebugLogger.error(
+            'Splash screen timeout occurred, navigating to login screen');
         context.go('/login');
       }
     });
   }
 
   Future<void> _checkAuthAndNavigate() async {
-    if (_navigationAttempted || _timeoutOccurred) return; 
+    if (_navigationAttempted || _timeoutOccurred) return;
     _navigationAttempted = true;
     DebugLogger.info("Checking authentication status");
-    
+
     try {
       // Allow splash to display for a moment
       await Future.delayed(const Duration(milliseconds: 500));
-      
+
       if (!mounted) return;
-      
+
       // Use the global auth service instead of Provider.of
       final globalAuthService = GlobalAuthService();
       DebugLogger.provider('SplashScreen using GlobalAuthService');
-      
+
       // Auth status is already checked during initialization
       if (globalAuthService.isAuthenticated) {
         _navigateToHome();
@@ -133,7 +153,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final primaryColor = AppColors.lightColorScheme.primary;
-    
+
     return Scaffold(
       body: Container(
         width: double.infinity,
@@ -143,7 +163,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              primaryColor, 
+              primaryColor,
               primaryColor.withAlpha(200),
             ],
           ),
@@ -187,10 +207,10 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                   ),
                 ),
                 const SizedBox(height: 40),
-                
+
                 // App Name
                 Text(
-                  'RealState',
+                  'Heaven Properties',
                   style: theme.textTheme.headlineLarge?.copyWith(
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
@@ -198,9 +218,9 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                     letterSpacing: 1.2,
                   ),
                 ),
-                
+
                 const SizedBox(height: 16),
-                
+
                 // Tagline
                 Text(
                   'Find Your Dream Home',
@@ -210,15 +230,16 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                     letterSpacing: 0.5,
                   ),
                 ),
-                
+
                 const SizedBox(height: 50),
-                
+
                 // Loading indicator with custom styling
                 SizedBox(
                   width: 40,
                   height: 40,
                   child: CircularProgressIndicator(
-                    valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                    valueColor:
+                        const AlwaysStoppedAnimation<Color>(Colors.white),
                     strokeWidth: 4,
                     backgroundColor: primaryColor.withAlpha(100),
                   ),

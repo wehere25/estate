@@ -1,9 +1,12 @@
 enum NotificationType {
-  newProperty,
-  priceUpdate,
+  propertyListed,
+  priceChange,
   statusChange,
+  chat,
+  system,
   reminder,
-  custom;
+  custom,
+  other;
 
   String toValue() {
     return toString().split('.').last;
@@ -11,8 +14,8 @@ enum NotificationType {
 
   static NotificationType fromString(String value) {
     return NotificationType.values.firstWhere(
-      (type) => type.toValue() == value,
-      orElse: () => NotificationType.custom,
+      (type) => type.toValue().toLowerCase() == value.toLowerCase(),
+      orElse: () => NotificationType.other,
     );
   }
 }

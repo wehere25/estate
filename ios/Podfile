@@ -1,5 +1,4 @@
-# Uncomment this line to define a global platform for your project
-# platform :ios, '12.0'
+platform :ios, '14.0'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
@@ -29,15 +28,86 @@ flutter_ios_podfile_setup
 
 target 'Runner' do
   use_frameworks!
+  use_modular_headers!
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
   target 'RunnerTests' do
     inherit! :search_paths
   end
+  
+  # Force BoringSSL-GRPC to use specific compiler flags without -G
+  pod 'BoringSSL-GRPC', :modular_headers => true
 end
 
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
+    
+    target.build_configurations.each do |config|
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '14.0'
+      
+      # Special handling for BoringSSL-GRPC which often contains the problematic -G flag
+      if target.name == 'BoringSSL-GRPC'
+        puts "Fixing BoringSSL-GRPC compiler flags..."
+        
+        # Replace any compiler flags containing -G with safer versions
+        safe_cflags = '-DOPENSSL_NO_ASM -fno-objc-arc -w'
+        if config.build_settings['OTHER_CFLAGS']
+          config.build_settings['OTHER_CFLAGS'] = safe_cflags
+        end
+        
+        if config.build_settings['OTHER_CPLUSPLUSFLAGS']
+          config.build_settings['OTHER_CPLUSPLUSFLAGS'] = safe_cflags
+        end
+        
+        # Add 'GRPC' prefix safely
+        if !config.build_settings['GCC_PREPROCESSOR_DEFINITIONS']
+          config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = ['$(inherited)', 'COCOAPODS=1', 'OPENSSL_NO_ASM=1', 'BORINGSSL_PREFIX=GRPC']
+        elsif !config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'].include?('BORINGSSL_PREFIX=GRPC')
+          config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] << 'BORINGSSL_PREFIX=GRPC'
+        end
+        
+        # Add other settings to help with the build
+        config.build_settings['CLANG_WARN_DOCUMENTATION_COMMENTS'] = 'NO'
+        config.build_settings['GCC_WARN_INHIBIT_ALL_WARNINGS'] = 'YES'
+      end
+      
+      # For all targets, clean up any -G flags
+      ['OTHER_CFLAGS', 'OTHER_LDFLAGS', 'OTHER_SWIFT_FLAGS', 'OTHER_CPLUSPLUSFLAGS'].each do |flag_key|
+        if config.build_settings[flag_key].is_a?(String) && config.build_settings[flag_key].include?('-G')
+          config.build_settings[flag_key] = config.build_settings[flag_key].gsub(/-G\b/, '')
+        elsif config.build_settings[flag_key].is_a?(Array)
+          config.build_settings[flag_key] = config.build_settings[flag_key].reject { |flag| flag == '-G' }
+        end
+      end
+      
+      # iOS 18.4 compatibility settings
+      config.build_settings['SWIFT_VERSION'] = '5.0'
+      config.build_settings['ENABLE_USER_SCRIPT_SANDBOXING'] = 'NO'
+      config.build_settings['CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER'] = 'YES'
+    end
+  end
+  
+  # Directly edit the Pods project file to remove any -G flags
+  project_path = installer.pods_project.path
+  project_pbxproj = File.join(project_path, 'project.pbxproj')
+  if File.exist?(project_pbxproj)
+    puts "Checking project.pbxproj for -G flags..."
+    content = File.read(project_pbxproj)
+    modified_content = content.gsub(/(\s|\")(-G)(\s|\")/, '\1\3')
+    if content != modified_content
+      puts "Fixing -G flags in project.pbxproj..."
+      File.write(project_pbxproj, modified_content)
+    end
+  end
+  
+  # Remove -G flags from all xcconfig files
+  Dir.glob(File.join(installer.sandbox.root, "**/*.xcconfig")).each do |xcconfig_file|
+    content = File.read(xcconfig_file)
+    modified_content = content.gsub(/\s-G\b/, '')
+    if content != modified_content
+      puts "Fixing -G flags in #{xcconfig_file}"
+      File.write(xcconfig_file, modified_content)
+    end
   end
 end
