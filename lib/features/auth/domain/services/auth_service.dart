@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import '../../../../core/utils/debug_logger.dart';
+import '../../../../core/services/secure_storage_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 /// Service class for Firebase Authentication operations
@@ -14,6 +15,9 @@ class AuthService {
 
   // Token refresh timer
   Timer? _tokenRefreshTimer;
+
+  // Secure storage for sensitive auth data
+  final SecureStorageService _secureStorage = SecureStorageService();
 
   /// Constructor with optional FirebaseAuth instance for testing
   AuthService({firebase_auth.FirebaseAuth? firebaseAuth})
@@ -49,13 +53,46 @@ class AuthService {
     _tokenRefreshTimer =
         Timer.periodic(const Duration(minutes: 45), (timer) async {
       try {
-        await user.getIdToken(true);
-        await _saveLastRefreshTimestamp();
-        DebugLogger.info('ID token refreshed successfully');
+        final token = await user.getIdToken(true);
+        // Store the token securely
+        if (token != null) {
+          await _secureStorage.saveAuthToken(token!);
+          await _saveLastRefreshTimestamp();
+          DebugLogger.info('ID token refreshed and stored securely');
+        }
       } catch (e) {
         DebugLogger.error('Failed to refresh ID token', e);
       }
     });
+  }
+
+  /// Verify token on app resume to prevent authentication issues after inactivity
+  Future<bool> verifyTokenOnAppResume() async {
+    final user = _firebaseAuth.currentUser;
+    if (user == null) {
+      return false;
+    }
+
+    try {
+      // Check when the token was last refreshed using secure storage
+      final lastRefreshTime = await _secureStorage.getLastRefreshTimestamp();
+      final now = DateTime.now().millisecondsSinceEpoch;
+
+      // If token hasn't been refreshed in the last 50 minutes, force a refresh
+      // (Firebase tokens typically expire after 1 hour)
+      if (lastRefreshTime == null || now - lastRefreshTime > 50 * 60 * 1000) {
+        DebugLogger.info('Token may be stale, forcing refresh on app resume');
+        final token = await user.getIdToken(true);
+        // Store the refreshed token securely
+        await _secureStorage.saveAuthToken(token!);
+        await _saveLastRefreshTimestamp();
+      }
+
+      return true;
+    } catch (e) {
+      DebugLogger.error('Token validation failed on app resume', e);
+      return false;
+    }
   }
 
   /// Cancel token refresh timer
@@ -67,9 +104,8 @@ class AuthService {
   /// Save the last token refresh timestamp
   Future<void> _saveLastRefreshTimestamp() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt(
-          _lastRefreshKey, DateTime.now().millisecondsSinceEpoch);
+      final now = DateTime.now().millisecondsSinceEpoch;
+      await _secureStorage.saveLastRefreshTimestamp(now);
     } catch (e) {
       DebugLogger.error('Failed to save token refresh timestamp', e);
     }
@@ -78,8 +114,12 @@ class AuthService {
   /// Save the last login timestamp
   Future<void> _setLastLoginTimestamp() async {
     try {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      await _secureStorage.saveLastRefreshTimestamp(now);
+
+      // Keep the legacy version for backward compatibility during migration
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt(_lastLoginKey, DateTime.now().millisecondsSinceEpoch);
+      await prefs.setInt(_lastLoginKey, now);
     } catch (e) {
       DebugLogger.error('Failed to save login timestamp', e);
     }
@@ -88,8 +128,12 @@ class AuthService {
   /// Cache the authentication status
   Future<void> _cacheAuthStatus(bool isAuthenticated) async {
     try {
+      await _secureStorage.saveCachedAuthStatus(isAuthenticated);
+
+      // Keep the legacy version for backward compatibility during migration
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_authUserKey, isAuthenticated);
+
       DebugLogger.info('Authentication status cached: $isAuthenticated');
     } catch (e) {
       DebugLogger.error('Failed to cache auth status', e);
@@ -104,8 +148,23 @@ class AuthService {
   /// Check if user was previously authenticated
   Future<bool> wasPreviouslyAuthenticated() async {
     try {
+      // Try getting from secure storage first
+      final secureStatus = await _secureStorage.getCachedAuthStatus();
+
+      // Fall back to shared preferences if secure storage doesn't have the value yet
+      if (secureStatus) {
+        return true;
+      }
+
       final prefs = await SharedPreferences.getInstance();
-      return prefs.getBool(_authUserKey) ?? false;
+      final legacyStatus = prefs.getBool(_authUserKey) ?? false;
+
+      // If we found it in shared preferences, migrate it to secure storage
+      if (legacyStatus) {
+        await _secureStorage.saveCachedAuthStatus(legacyStatus);
+      }
+
+      return legacyStatus;
     } catch (e) {
       DebugLogger.error('Failed to get cached auth status', e);
       return false;
@@ -117,6 +176,15 @@ class AuthService {
       String email, String password,
       {bool rememberMe = false}) async {
     try {
+      // Check login rate limit
+      final isAllowed = await checkLoginRateLimit(email);
+      if (!isAllowed) {
+        throw firebase_auth.FirebaseAuthException(
+          code: 'rate-limit-exceeded',
+          message: 'Too many login attempts. Please try again later.',
+        );
+      }
+
       // Get credential from Firebase
       final credential = await _firebaseAuth.signInWithEmailAndPassword(
         email: email.trim(),
@@ -146,13 +214,16 @@ class AuthService {
           // Send a new verification email
           await freshUser.sendEmailVerification();
 
-          // Sign out immediately to enforce verification
+          // Sign out immediately to enforce verification - moved before exception
           await signOut();
 
           // Cache the auth provider type
           try {
             final prefs = await SharedPreferences.getInstance();
             await prefs.setString('auth_provider', 'email');
+            // Track verification status explicitly
+            await prefs.setBool('email_verification_required', true);
+            await prefs.setString('pending_verification_email', email);
           } catch (e) {
             DebugLogger.error('Failed to cache auth provider type', e);
           }
@@ -167,6 +238,16 @@ class AuthService {
 
         // Continue with verified user or Google user
         if (freshUser != null && (freshUser.emailVerified || isGoogleSignIn)) {
+          // Clear any pending verification status
+          try {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.remove('email_verification_required');
+            await prefs.remove('pending_verification_email');
+          } catch (e) {
+            // Non-critical error, just log it
+            DebugLogger.error('Failed to clear verification status', e);
+          }
+
           // Create or update user document in Firestore if needed
           try {
             await _createOrUpdateUserDocument(freshUser, isGoogleSignIn);
@@ -388,6 +469,7 @@ class AuthService {
     if (user != null) {
       try {
         final token = await user.getIdToken(true);
+        await _secureStorage.saveAuthToken(token!);
         await _saveLastRefreshTimestamp();
         return token;
       } catch (e) {
@@ -434,6 +516,7 @@ class AuthService {
       final token = await user.getIdToken(true);
       if (token != null && token.isNotEmpty) {
         // Token is valid, update timestamp
+        await _secureStorage.saveAuthToken(token);
         await _saveLastRefreshTimestamp();
         DebugLogger.info('Auth token is valid and has been refreshed');
         return true;
@@ -492,6 +575,53 @@ class AuthService {
     } catch (e) {
       DebugLogger.error('Failed to send verification email to address', e);
       rethrow;
+    }
+  }
+
+  /// Check if login attempts should be rate limited for an email
+  Future<bool> checkLoginRateLimit(String email) async {
+    try {
+      final store = FirebaseFirestore.instance;
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final fifteenMinutesAgo = now - (15 * 60 * 1000);
+
+      // Use a hash of the email as the document ID to prevent exposing email addresses
+      final emailHash = email.toLowerCase().hashCode.toString();
+      final attemptRef = store.collection('loginAttempts').doc(emailHash);
+      final doc = await attemptRef.get();
+
+      if (doc.exists) {
+        final data = doc.data()!;
+        final List<dynamic> rawTimestamps = data['timestamps'] ?? [];
+        final attempts = List<int>.from(rawTimestamps)
+            .where((timestamp) => timestamp > fifteenMinutesAgo)
+            .toList();
+
+        // Rate limit: 5 attempts per 15 minutes
+        if (attempts.length >= 5) {
+          // Log the rate limiting event
+          DebugLogger.warn('Rate limit reached for login attempts: $emailHash');
+          return false; // Rate limited
+        }
+
+        // Update attempts with the new timestamp
+        attempts.add(now);
+        await attemptRef.set({'timestamps': attempts, 'lastAttempt': now});
+      } else {
+        // First attempt
+        await attemptRef.set({
+          'timestamps': [now],
+          'lastAttempt': now,
+          'createdAt': now
+        });
+      }
+
+      return true; // Not rate limited
+    } catch (e) {
+      DebugLogger.error('Error checking login rate limit', e);
+      // Default to allowing the request if there's an error checking the rate limit
+      // This is more user-friendly but less secure - consider your threat model
+      return true;
     }
   }
 }

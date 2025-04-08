@@ -5,12 +5,14 @@ class AuthForm extends StatefulWidget {
   final Function(String email, String password) onSubmit;
   final String submitButtonText;
   final bool showForgotPassword;
-  
+  final bool isRegistration;
+
   const AuthForm({
     Key? key,
     required this.onSubmit,
     this.submitButtonText = 'Submit',
     this.showForgotPassword = false,
+    this.isRegistration = false,
   }) : super(key: key);
 
   @override
@@ -61,19 +63,37 @@ class _AuthFormState extends State<AuthForm> {
             controller: _passwordController,
             decoration: InputDecoration(
               labelText: 'Password',
-              hintText: 'Enter your password',
+              hintText: widget.isRegistration
+                  ? 'Create a strong password'
+                  : 'Enter your password',
               prefixIcon: const Icon(Icons.lock_outline),
               suffixIcon: IconButton(
                 icon: Icon(
                   _isPasswordVisible ? Icons.visibility_off : Icons.visibility,
                 ),
-                onPressed: () => setState(() => _isPasswordVisible = !_isPasswordVisible),
+                onPressed: () =>
+                    setState(() => _isPasswordVisible = !_isPasswordVisible),
               ),
             ),
             obscureText: !_isPasswordVisible,
-            validator: Validators.validatePassword,
+            validator: widget.isRegistration
+                ? Validators
+                    .validateStrongPassword // Use strong password validation for registration
+                : Validators.validatePassword, // Use basic validation for login
             autovalidateMode: AutovalidateMode.onUserInteraction,
           ),
+          if (widget.isRegistration)
+            Padding(
+              padding: const EdgeInsets.only(top: 8.0),
+              child: Text(
+                'Password must have 8+ characters with uppercase, lowercase, number and special character',
+                style: TextStyle(
+                  fontSize: 12,
+                  color:
+                      Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                ),
+              ),
+            ),
           if (widget.showForgotPassword)
             Align(
               alignment: Alignment.centerRight,
