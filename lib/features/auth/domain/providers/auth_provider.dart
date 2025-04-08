@@ -208,11 +208,10 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  /// Check authentication status on app start
+  /// Check authentication status on app start and when app resumes
   Future<void> checkAuthStatus() async {
     if (_isCheckingAuth) {
-      DebugLogger.info(
-          'NAVBAR DEBUG: AuthProvider - Auth check already in progress');
+      DebugLogger.info('Auth check already in progress');
       return;
     }
 
@@ -223,30 +222,31 @@ class AuthProvider with ChangeNotifier {
         notifyListeners();
       }
 
-      DebugLogger.info(
-          'NAVBAR DEBUG: AuthProvider - Checking authentication status');
+      DebugLogger.info('Checking authentication status');
       _setLoading(true);
 
       // First check if there's a current Firebase user
       final currentUser = _authService.getCurrentUser();
 
       if (currentUser != null) {
-        // Verify if token is valid and not expired
-        final isTokenValid = await _authService.verifyTokenValidity();
+        // Verify token validity on app resume - this will catch expired tokens
+        final isTokenValid = await _authService.verifyTokenOnAppResume();
 
         if (isTokenValid) {
           _user = currentUser;
           await _fetchUserModel();
           _status = AuthStatus.authenticated;
           DebugLogger.info(
-              'NAVBAR DEBUG: AuthProvider - User is authenticated with valid token: ${_user?.email}');
+              'User is authenticated with valid token: ${_user?.email}');
+
+          // Clear any cached flag indicating we're using potentially outdated auth state
+          _usingCachedAuth = false;
         } else {
           // Token expired or invalid - force a new sign in
           _error = 'Your session has expired. Please sign in again.';
           _status = AuthStatus.unauthenticated;
           await _authService.signOut(); // Clear invalid session
-          DebugLogger.info(
-              'NAVBAR DEBUG: AuthProvider - Auth token expired or invalid, user signed out');
+          DebugLogger.info('Auth token expired or invalid, user signed out');
         }
       } else {
         // If no current user, check if user was previously authenticated
@@ -258,27 +258,24 @@ class AuthProvider with ChangeNotifier {
         if (wasAuthenticated && shouldRemember) {
           _status = AuthStatus.authenticating;
           DebugLogger.info(
-              'NAVBAR DEBUG: AuthProvider - Attempting to restore previous authentication session');
+              'Attempting to restore previous authentication session');
 
           // We'll let the authStateChanges listener handle the state update
           // if the Firebase Auth persistence restores the session automatically
         } else {
           _status = AuthStatus.unauthenticated;
-          DebugLogger.info(
-              'NAVBAR DEBUG: AuthProvider - User is not authenticated');
+          DebugLogger.info('User is not authenticated');
         }
       }
-
-      // After checking, we're no longer using just cached auth
-      _usingCachedAuth = false;
     } catch (e) {
       _status = AuthStatus.error;
       _error = 'Failed to check authentication status';
-      DebugLogger.error(
-          'NAVBAR DEBUG: AuthProvider - Auth status check failed', e);
+      DebugLogger.error('Auth status check failed', e);
     } finally {
       _setLoading(false);
       _isCheckingAuth = false;
+      _usingCachedAuth =
+          false; // Always clear this flag when completing a full auth check
       notifyListeners();
     }
   }

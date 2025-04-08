@@ -32,9 +32,6 @@ target 'Runner' do
 
   # Add special options for BoringSSL to fix -G flag issues
   pod 'BoringSSL-GRPC', :modular_headers => true
-  
-  # Special configuration for leveldb-library
-  pod 'leveldb-library', :modular_headers => true
 
   # Install all Flutter pods
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
@@ -59,35 +56,25 @@ post_install do |installer|
         config.build_settings['OTHER_CPLUSPLUSFLAGS'] = '-DOPENSSL_NO_ASM -fno-objc-arc'
         
         # Set preprocessor definitions
-        config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = ['', 'COCOAPODS=1', 'OPENSSL_NO_ASM=1', 'BORINGSSL_PREFIX=GRPC']
-      
-      # Special handling for leveldb-library
-      elsif target.name == 'leveldb-library'
-        puts "Applying leveldb-library fixes in #{config.name} configuration"
-        
-        # Add header search paths
-        config.build_settings['HEADER_SEARCH_PATHS'] = ['', '/leveldb-library', '/leveldb-library/include']
-        
-        # Disable some warnings for leveldb
-        config.build_settings['GCC_WARN_INHIBIT_ALL_WARNINGS'] = 'YES'
+        config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = ['$(inherited)', 'COCOAPODS=1', 'OPENSSL_NO_ASM=1', 'BORINGSSL_PREFIX=GRPC']
       end
       
       # Make sure all pods include the Flutter framework search paths
       if config.build_settings['FRAMEWORK_SEARCH_PATHS']
-        unless config.build_settings['FRAMEWORK_SEARCH_PATHS'].include?('/../Flutter')
-          config.build_settings['FRAMEWORK_SEARCH_PATHS'] << '/../Flutter'
+        unless config.build_settings['FRAMEWORK_SEARCH_PATHS'].include?('${PODS_ROOT}/../Flutter')
+          config.build_settings['FRAMEWORK_SEARCH_PATHS'] << '${PODS_ROOT}/../Flutter'
         end
       else
-        config.build_settings['FRAMEWORK_SEARCH_PATHS'] = ['', '/../Flutter', '/Flutter']
+        config.build_settings['FRAMEWORK_SEARCH_PATHS'] = ['$(inherited)', '${PODS_ROOT}/../Flutter', '${PODS_XCFRAMEWORKS_BUILD_DIR}/Flutter']
       end
       
       # Add Flutter to header search paths for all pods
       if config.build_settings['HEADER_SEARCH_PATHS']
-        unless config.build_settings['HEADER_SEARCH_PATHS'].include?('/../Flutter')
-          config.build_settings['HEADER_SEARCH_PATHS'] << '/../Flutter'
+        unless config.build_settings['HEADER_SEARCH_PATHS'].include?('${PODS_ROOT}/../Flutter')
+          config.build_settings['HEADER_SEARCH_PATHS'] << '${PODS_ROOT}/../Flutter'
         end
       else
-        config.build_settings['HEADER_SEARCH_PATHS'] = ['', '/../Flutter']
+        config.build_settings['HEADER_SEARCH_PATHS'] = ['$(inherited)', '${PODS_ROOT}/../Flutter']
       end
     end
   end
@@ -108,6 +95,17 @@ post_install do |installer|
     if content != modified_content
       puts "Fixed -G flags in project.pbxproj"
       File.write(project_pbxproj, modified_content)
+    end
+  end
+  
+  # Include flutter_paths_fix.xcconfig in all project configurations
+  installer.generated_projects.each do |project|
+    project.targets.each do |target|
+      target.build_configurations.each do |config|
+        # Add custom xcconfig to all targets
+        xcconfig_path = File.expand_path('flutter_paths_fix.xcconfig')
+        config.base_configuration_reference = project.new_file(xcconfig_path)
+      end
     end
   end
 end

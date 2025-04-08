@@ -68,7 +68,7 @@ class _SharedPropertyDetailViewState extends State<SharedPropertyDetailView>
   void _shareProperty() {
     final String shareText =
         'Check out this property: ${widget.property.title}\n'
-        'Price: \$${widget.property.price}\n'
+        'Price: ${FormattingUtils.formatIndianRupees(widget.property.price)}\n'
         'Location: ${widget.property.location ?? 'Not specified'}\n'
         'Details: ${widget.property.bedrooms} bed, ${widget.property.bathrooms} bath, ${widget.property.area} sqft\n'
         'View it in our app!';
@@ -773,12 +773,6 @@ class _SharedPropertyDetailViewState extends State<SharedPropertyDetailView>
                       // Price with currency icon
                       Row(
                         children: [
-                          Icon(
-                            Icons.currency_rupee,
-                            color: primaryColor,
-                            size: 32,
-                          ),
-                          const SizedBox(width: 4),
                           Text(
                             FormattingUtils.formatIndianRupees(property.price),
                             style: TextStyle(

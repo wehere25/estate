@@ -532,7 +532,7 @@ class _PropertyEditScreenState extends State<PropertyEditScreen> {
               decoration: const InputDecoration(
                 labelText: "Price",
                 border: OutlineInputBorder(),
-                prefixText: "\$ ",
+                prefixText: "₹ ",
               ),
               validator: (value) =>
                   ValidationUtils.validateNumber(value, "Price"),

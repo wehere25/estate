@@ -1,0 +1,6 @@
+// Special Flutter Framework search paths
+FRAMEWORK_SEARCH_PATHS = $(inherited) "${PODS_ROOT}/../Flutter" "${PODS_XCFRAMEWORKS_BUILD_DIR}/Flutter"
+HEADER_SEARCH_PATHS = $(inherited) "${PODS_ROOT}/../Flutter" 
+
+// Fix for Flutter.h not found in plugins
+OTHER_LDFLAGS = $(inherited) -framework Flutter

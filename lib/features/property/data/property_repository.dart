@@ -61,7 +61,8 @@ class PropertyRepository {
         // Apply listing type filter (sale/rent)
         if (filters.containsKey('listingType') &&
             filters['listingType'] != null) {
-          query = query.where('listingType', isEqualTo: filters['listingType']);
+          final listingType = filters['listingType'].toString();
+          query = query.where('listingType', isEqualTo: listingType);
         }
 
         // Apply price range filters

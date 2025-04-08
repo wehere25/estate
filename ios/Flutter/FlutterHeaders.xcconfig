@@ -1,0 +1,2 @@
+// Flutter Header search paths
+HEADER_SEARCH_PATHS = $(inherited) $(SRCROOT)/Flutter $(SRCROOT)/Flutter/Flutter.framework/Headers $(SRCROOT)/Runner/Flutter $(PODS_ROOT)/Flutter/Flutter.framework/Headers "/Users/hashi/.pub-cache/hosted/pub.dev/sqflite_darwin-2.4.2/darwin/sqflite_darwin/Sources/sqflite_darwin/include/sqflite_darwin"

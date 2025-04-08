@@ -1,0 +1,2 @@
+HEADER_SEARCH_PATHS = $(inherited) "$(SRCROOT)/Flutter" "$(SRCROOT)/Flutter/Flutter.framework/Headers" "$(SRCROOT)/Runner/Flutter" "${PODS_ROOT}/Flutter/Flutter.framework/Headers" "${PODS_ROOT}/../Flutter/Flutter.framework/Headers"
+FRAMEWORK_SEARCH_PATHS = $(inherited) "$(SRCROOT)/Flutter" "${PODS_ROOT}/Flutter" "${PODS_ROOT}/../Flutter"

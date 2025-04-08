@@ -1,0 +1,2 @@
+// LevelDB Header search paths
+HEADER_SEARCH_PATHS = $(inherited) "$(PODS_ROOT)/leveldb-library/include" "$(PODS_ROOT)/leveldb-library"

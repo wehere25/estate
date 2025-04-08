@@ -224,7 +224,7 @@ class _PropertyDetailScreenState extends State<PropertyDetailScreen>
     if (_property == null) return;
 
     final String shareText = 'Check out this property: ${_property!.title}\n'
-        'Price: \$${_property!.price}\n'
+        'Price: ${FormattingUtils.formatIndianRupees(_property!.price)}\n'
         'Location: ${_property!.location ?? 'Not specified'}\n'
         'Details: ${_property!.bedrooms} bed, ${_property!.bathrooms} bath, ${_property!.area} sqft\n'
         'View it in our app!';

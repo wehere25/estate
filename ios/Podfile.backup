@@ -1,0 +1,137 @@
+platform :ios, '14.0'
+
+# CocoaPods analytics sends network stats synchronously affecting flutter build latency.
+ENV['COCOAPODS_DISABLE_STATS'] = 'true'
+
+project 'Runner', {
+  'Debug' => :debug,
+  'Profile' => :release,
+  'Release' => :release,
+}
+
+def flutter_root
+  generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
+  unless File.exist?(generated_xcode_build_settings_path)
+    raise "#{generated_xcode_build_settings_path} must exist. If you're running pod install manually, make sure flutter pub get is executed first"
+  end
+
+  File.foreach(generated_xcode_build_settings_path) do |line|
+    matches = line.match(/FLUTTER_ROOT\=(.*)/)
+    return matches[1].strip if matches
+  end
+  raise "FLUTTER_ROOT not found in #{generated_xcode_build_settings_path}. Try deleting Generated.xcconfig, then run flutter pub get"
+end
+
+require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
+
+flutter_ios_podfile_setup
+
+target 'Runner' do
+  use_frameworks!
+  use_modular_headers!
+
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+  
+  # Explicitly handle BoringSSL to prevent -G flag issues
+  pod 'BoringSSL-GRPC', :modular_headers => true
+  
+  target 'RunnerTests' do
+    inherit! :search_paths
+  end
+end
+
+post_install do |installer|
+  # Add special config file to fix BoringSSL simulator issues
+  puts "Adding BoringSSL fix to xcconfig files..."
+  config_file_path = File.expand_path('boringssl_fix.xcconfig')
+  
+  Dir.glob("#{installer.sandbox.root}/Target Support Files/BoringSSL-GRPC/*.xcconfig").each do |config_file|
+    unless File.read(config_file).include?('#include "boringssl_fix.xcconfig"')
+      File.open(config_file, 'a') do |file|
+        file.puts ""
+        file.puts '#include "../../../../../../boringssl_fix.xcconfig"'
+      end
+    end
+  end
+  
+  # First do Flutter's standard pod settings
+  flutter_additional_ios_build_settings(installer)
+  
+  # Then apply custom fixes
+  installer.pods_project.targets.each do |target|
+    target.build_configurations.each do |config|
+      # Ensure iOS 14.0 deployment target for all pods
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '14.0'
+      
+      # For simulator builds, ensure correct architectures
+      config.build_settings['ONLY_ACTIVE_ARCH'] = 'NO'
+      
+      # Special handling for BoringSSL-GRPC
+      if target.name == 'BoringSSL-GRPC'
+        puts "Applying special fixes to BoringSSL-GRPC target in #{config.name} configuration"
+        
+        # Replace any compiler flags containing -G with safer versions
+        safe_cflags = '-DOPENSSL_NO_ASM -fno-objc-arc'
+        config.build_settings['OTHER_CFLAGS'] = safe_cflags
+        config.build_settings['OTHER_CPLUSPLUSFLAGS'] = safe_cflags
+        
+        # Prevent -G from being added through definitions
+        config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = ['$(inherited)', 'COCOAPODS=1', 'OPENSSL_NO_ASM=1', 'BORINGSSL_PREFIX=GRPC']
+        
+        # Add other settings to help with the build
+        config.build_settings['CLANG_WARN_DOCUMENTATION_COMMENTS'] = 'NO'
+        config.build_settings['GCC_WARN_INHIBIT_ALL_WARNINGS'] = 'YES'
+      end
+      
+      # For all targets, remove any -G flags
+      ['OTHER_CFLAGS', 'OTHER_LDFLAGS', 'OTHER_SWIFT_FLAGS', 'OTHER_CPLUSPLUSFLAGS'].each do |flag_key|
+        if config.build_settings[flag_key].is_a?(Array)
+          config.build_settings[flag_key] = config.build_settings[flag_key].reject { |flag| flag == '-G' }
+        elsif config.build_settings[flag_key].is_a?(String) && config.build_settings[flag_key].include?('-G')
+          config.build_settings[flag_key] = config.build_settings[flag_key].gsub(/-G\b/, '')
+        end
+      end
+      
+      # iOS compatibility settings
+      config.build_settings['SWIFT_VERSION'] = '5.0'
+      config.build_settings['ENABLE_USER_SCRIPT_SANDBOXING'] = 'NO'
+      config.build_settings['CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER'] = 'YES'
+    end
+  end
+  
+  # Direct fix for Xcode project files
+  puts "Directly patching Xcode project files to remove -G flags..."
+  
+  # Directly patch project.pbxproj
+  project_path = installer.pods_project.path
+  project_pbxproj = File.join(project_path, 'project.pbxproj')
+  if File.exist?(project_pbxproj)
+    content = File.read(project_pbxproj)
+    modified_content = content.gsub(/(\s|\")(-G)(\s|\")/, '\1\3')
+    modified_content = modified_content.gsub(/"\-G"/, '""')
+    
+    if content != modified_content
+      puts "Fixed -G flags in #{project_pbxproj}"
+      File.write(project_pbxproj, modified_content)
+    end
+  end
+  
+  # Also directly patch any C/C++ source files with -G flags
+  boringssl_dir = File.join(installer.sandbox.root, "BoringSSL-GRPC")
+  if Dir.exist?(boringssl_dir)
+    Dir.glob("#{boringssl_dir}/**/*.{c,cc,cpp,h,m,mm}").each do |file|
+      begin
+        content = File.read(file)
+        if content.include?('-G')
+          modified = content.gsub(/-G\b/, '')
+          if content != modified
+            puts "Fixed -G flag in #{File.basename(file)}"
+            File.write(file, modified)
+          end
+        end
+      rescue => e
+        puts "Error processing file #{file}: #{e.message}"
+      end
+    end
+  end
+end
